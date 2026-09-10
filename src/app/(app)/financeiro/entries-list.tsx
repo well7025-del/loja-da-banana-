@@ -61,6 +61,16 @@ export function EntriesList({
             </div>
           </button>
 
+          {openId === entry.id && (entry.status === "PAID" || entry.status === "CANCELLED") && (
+            <div className="border-t border-[var(--border)] px-4 py-3">
+              <p className="text-sm font-semibold text-leaf-700">
+                {entry.status === "PAID"
+                  ? `Título quitado — ${brl(entry.amount)}.`
+                  : "Título cancelado."}
+              </p>
+            </div>
+          )}
+
           {openId === entry.id && canPay && entry.status !== "PAID" && entry.status !== "CANCELLED" && (
             <div className="border-t border-[var(--border)] p-4">
               <ActionForm

@@ -16,3 +16,12 @@ export async function stockProducts(companyId: string): Promise<StockProduct[]> 
     stock: p.inventory.reduce((a, i) => a.plus(D(i.quantity)), ZERO).toNumber(),
   }));
 }
+
+export async function warehouseOptions(companyId: string) {
+  const rows = await prisma.warehouse.findMany({
+    where: { companyId, active: true },
+    orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+    select: { id: true, name: true, isDefault: true },
+  });
+  return rows;
+}

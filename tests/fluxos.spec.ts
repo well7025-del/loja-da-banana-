@@ -20,7 +20,9 @@ async function login(page: Page, email = EMAIL, password = PASSWORD) {
   await field(page, "email").fill(email);
   await field(page, "password").fill(password);
   await page.getByRole("button", { name: "Entrar" }).click();
-  await page.waitForURL((url) => !url.pathname.startsWith("/login"));
+  // O redirecionamento da server action é navegação suave: esperamos a casca
+  // autenticada aparecer, não o evento "load".
+  await expect(page.getByRole("navigation", { name: "Navegação principal" })).toBeVisible();
   // No primeiro acesso o sistema leva para a troca de senha; seguimos ao início.
   if (page.url().includes("/perfil")) await page.goto("/");
 }
@@ -67,7 +69,7 @@ test.describe("Loja da Banana — ERP", () => {
     await field(page, "kind").selectOption("RAW");
     await field(page, "minStock").fill("10");
     await page.getByRole("button", { name: "Cadastrar produto" }).click();
-    await page.waitForURL(/\/produtos\/[a-z0-9]+/);
+    await expect(page).toHaveURL(/\/produtos\/(?!novo)[a-z0-9]+/);
     await expect(page.getByText("Produto salvo com sucesso.")).toBeVisible();
 
     await entrada(page, nome, "40", "7,50");
@@ -98,7 +100,7 @@ test.describe("Loja da Banana — ERP", () => {
     await expect(page.locator('[name="items[0][quantity]"]')).toHaveValue("2");
     await page.getByRole("button", { name: "Finalizar venda" }).click();
 
-    await page.waitForURL(/\/vendas\/[a-z0-9]+/);
+    await expect(page).toHaveURL(/\/vendas\/(?!nova)[a-z0-9]+/);
     await expect(page.getByText(/registrada com sucesso/)).toBeVisible();
     await expect(page.getByText("Lucro bruto")).toBeVisible();
   });
@@ -113,9 +115,9 @@ test.describe("Loja da Banana — ERP", () => {
     await field(page, "yieldQty").fill("25");
     await page.getByPlaceholder("Buscar matéria-prima ou embalagem").fill("Banana verde");
     await page.getByRole("button", { name: /Banana verde/ }).first().click();
-    await page.locator('input[inputmode="decimal"]').nth(1).fill("100");
+    await page.getByLabel("Quantidade do ingrediente").fill("100");
     await page.getByRole("button", { name: "Criar ficha técnica" }).click();
-    await page.waitForURL(/\/fichas-tecnicas\/[a-z0-9]+/);
+    await expect(page).toHaveURL(/\/fichas-tecnicas\/(?!nova)[a-z0-9]+/);
     await expect(page.getByText("Composição do custo")).toBeVisible();
 
     // Produção
@@ -125,15 +127,16 @@ test.describe("Loja da Banana — ERP", () => {
     await expect(page.getByText("Matéria-prima necessária")).toBeVisible();
     await expect(page.getByText("Custo estimado")).toBeVisible();
     await page.getByRole("button", { name: "Iniciar produção" }).click();
-    await page.waitForURL(/\/producao\/[a-z0-9]+/);
+    await expect(page).toHaveURL(/\/producao\/(?!nova)[a-z0-9]+/);
 
     await field(page, "producedQty").fill("25");
     await field(page, "lossQty").fill("1");
     await page.getByRole("button", { name: "Finalizar produção" }).click();
-    await expect(page.getByText(/Lote LB-\d{8}-\d{3} gerado/)).toBeVisible();
 
-    // O rendimento apurado deve ser 25% (25 kg a partir de 100 kg de banana)
-    await expect(page.getByText("25.0%")).toBeVisible();
+    // A confirmação traz o número do lote gerado
+    await expect(page.getByText(/Produção finalizada\. Lote LB-\d{8}-\d{3} gerado/)).toBeVisible();
+    // E o rendimento apurado é 25% (25 kg a partir de 100 kg de banana)
+    await expect(page.getByText("25%", { exact: false }).first()).toBeVisible();
   });
 
   test("Central de Decisões apresenta recomendações", async ({ page }) => {

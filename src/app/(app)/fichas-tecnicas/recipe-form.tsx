@@ -144,6 +144,7 @@ export function RecipeForm({
                   Quantidade
                   <input
                     inputMode="decimal" className="input mt-1 !min-h-[2.5rem] text-sm"
+                    aria-label="Quantidade do ingrediente"
                     value={row.line.quantity} onChange={(e) => patch(index, { quantity: e.target.value })}
                   />
                 </label>

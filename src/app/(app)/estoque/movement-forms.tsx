@@ -3,13 +3,39 @@
 import { useState } from "react";
 import { ActionForm } from "@/components/forms";
 import { Card, Field } from "@/components/ui";
-import { stockAdjustAction, stockEntryAction, stockExitAction } from "@/app/actions/stock";
+import { stockAdjustAction, stockEntryAction, stockExitAction, stockTransferAction } from "@/app/actions/stock";
 import { MOVEMENT_REASON_LABELS } from "@/lib/defaults";
 
 export type StockProduct = {
   id: string; sku: string; name: string; unit: string; stock: number;
   trackBatches: boolean; avgCost: number;
 };
+
+export type WarehouseOption = { id: string; name: string; isDefault: boolean };
+
+/** Só aparece quando a empresa tem mais de um local de estoque. */
+function WarehousePicker({
+  warehouses, name = "warehouseId", label = "Local de estoque", value, onChange,
+}: {
+  warehouses: WarehouseOption[]; name?: string; label?: string;
+  value?: string; onChange?: (id: string) => void;
+}) {
+  if (warehouses.length <= 1) return null;
+  const controlled = value !== undefined;
+  return (
+    <Field label={label}>
+      <select
+        name={name}
+        className="input"
+        {...(controlled
+          ? { value, onChange: (e) => onChange?.(e.target.value) }
+          : { defaultValue: warehouses.find((w) => w.isDefault)?.id ?? warehouses[0].id })}
+      >
+        {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+      </select>
+    </Field>
+  );
+}
 
 function ProductPicker({
   products, value, onChange,
@@ -64,7 +90,9 @@ function ProductPicker({
   );
 }
 
-export function StockEntryForm({ products, suppliers }: { products: StockProduct[]; suppliers: { id: string; name: string }[] }) {
+export function StockEntryForm({
+  products, suppliers, warehouses = [],
+}: { products: StockProduct[]; suppliers: { id: string; name: string }[]; warehouses?: WarehouseOption[] }) {
   const [productId, setProductId] = useState("");
   const product = products.find((p) => p.id === productId);
 
@@ -72,6 +100,7 @@ export function StockEntryForm({ products, suppliers }: { products: StockProduct
     <ActionForm action={stockEntryAction} submitLabel="Registrar entrada" pendingLabel="Registrando...">
       <Card className="space-y-3">
         <ProductPicker products={products} value={productId} onChange={setProductId} />
+        <WarehousePicker warehouses={warehouses} />
         <div className="grid grid-cols-2 gap-3">
           <Field label="Quantidade" required>
             <input name="quantity" className="input" inputMode="decimal" placeholder="0,000" required />
@@ -111,12 +140,15 @@ export function StockEntryForm({ products, suppliers }: { products: StockProduct
   );
 }
 
-export function StockExitForm({ products }: { products: StockProduct[] }) {
+export function StockExitForm({
+  products, warehouses = [],
+}: { products: StockProduct[]; warehouses?: WarehouseOption[] }) {
   const [productId, setProductId] = useState("");
   return (
     <ActionForm action={stockExitAction} submitLabel="Registrar saída" pendingLabel="Registrando..." buttonClass="btn-danger w-full">
       <Card className="space-y-3">
         <ProductPicker products={products} value={productId} onChange={setProductId} />
+        <WarehousePicker warehouses={warehouses} />
         <Field label="Quantidade" required>
           <input name="quantity" className="input" inputMode="decimal" placeholder="0,000" required />
         </Field>
@@ -135,13 +167,16 @@ export function StockExitForm({ products }: { products: StockProduct[] }) {
   );
 }
 
-export function StockAdjustForm({ products }: { products: StockProduct[] }) {
+export function StockAdjustForm({
+  products, warehouses = [],
+}: { products: StockProduct[]; warehouses?: WarehouseOption[] }) {
   const [productId, setProductId] = useState("");
   const product = products.find((p) => p.id === productId);
   return (
     <ActionForm action={stockAdjustAction} submitLabel="Ajustar saldo" pendingLabel="Ajustando...">
       <Card className="space-y-3">
         <ProductPicker products={products} value={productId} onChange={setProductId} />
+        <WarehousePicker warehouses={warehouses} />
         {product && (
           <p className="rounded-xl bg-ink-50 px-3.5 py-3 text-sm text-ink-600">
             Saldo no sistema: <strong className="tabular-nums">
@@ -154,6 +189,42 @@ export function StockAdjustForm({ products }: { products: StockProduct[] }) {
         </Field>
         <Field label="Motivo do ajuste">
           <input name="note" className="input" placeholder="Ex.: contagem física de fim de mês" />
+        </Field>
+      </Card>
+    </ActionForm>
+  );
+}
+
+export function StockTransferForm({
+  products, warehouses,
+}: { products: StockProduct[]; warehouses: WarehouseOption[] }) {
+  const [productId, setProductId] = useState("");
+  const [from, setFrom] = useState(warehouses.find((w) => w.isDefault)?.id ?? warehouses[0]?.id ?? "");
+  const [to, setTo] = useState(warehouses.find((w) => w.id !== from)?.id ?? "");
+
+  return (
+    <ActionForm action={stockTransferAction} submitLabel="Transferir" pendingLabel="Transferindo...">
+      <Card className="space-y-3">
+        <ProductPicker products={products} value={productId} onChange={setProductId} />
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="De" required>
+            <select name="fromWarehouseId" className="input" value={from} onChange={(e) => setFrom(e.target.value)}>
+              {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Para" required>
+            <select name="toWarehouseId" className="input" value={to} onChange={(e) => setTo(e.target.value)}>
+              {warehouses.filter((w) => w.id !== from).map((w) => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <Field label="Quantidade" required hint="Sai primeiro o lote mais próximo do vencimento">
+          <input name="quantity" className="input" inputMode="decimal" placeholder="0,000" required />
+        </Field>
+        <Field label="Observação">
+          <input name="note" className="input" placeholder="Ex.: reposição da loja" />
         </Field>
       </Card>
     </ActionForm>

@@ -296,3 +296,83 @@ export async function stockLevels(companyId: string, kinds?: ("FINISHED" | "RAW"
     };
   });
 }
+
+/**
+ * TRANSFERÊNCIA entre locais de estoque.
+ * Sai do local de origem por FEFO e entra no destino preservando a
+ * rastreabilidade: cada porção movida gera um lote no destino que aponta para
+ * a mesma produção/compra de origem, com a mesma validade e o mesmo custo.
+ * O custo médio da empresa não muda — o item apenas trocou de lugar.
+ */
+export async function transferStock(
+  tx: Tx,
+  input: {
+    companyId: string;
+    fromWarehouseId: string;
+    toWarehouseId: string;
+    productId: string;
+    quantity: Prisma.Decimal | number | string;
+    note?: string | null;
+    userId?: string | null;
+  },
+) {
+  if (input.fromWarehouseId === input.toWarehouseId) {
+    throw new BusinessError("Escolha locais de origem e destino diferentes.");
+  }
+  const quantity = qty(input.quantity);
+
+  const exit = await registerExit(tx, {
+    companyId: input.companyId,
+    warehouseId: input.fromWarehouseId,
+    productId: input.productId,
+    quantity,
+    reason: "TRANSFER_OUT",
+    note: input.note ?? "Transferência entre locais",
+    userId: input.userId,
+  });
+
+  for (const movement of exit.movements) {
+    let destinationBatchId: string | null = null;
+
+    if (movement.batchId) {
+      const origin = await tx.batch.findUniqueOrThrow({ where: { id: movement.batchId } });
+      const transferred = await tx.batch.count({
+        where: { companyId: input.companyId, code: { startsWith: `${origin.code}-T` } },
+      });
+      const destination = await tx.batch.create({
+        data: {
+          companyId: input.companyId,
+          warehouseId: input.toWarehouseId,
+          productId: input.productId,
+          code: `${origin.code}-T${transferred + 1}`,
+          origin: origin.origin,
+          producedQty: D(movement.quantity),
+          availableQty: 0,
+          unitCost: D(movement.unitCost),
+          manufacturedAt: origin.manufacturedAt,
+          expiresAt: origin.expiresAt,
+          productionOrderId: origin.productionOrderId,
+          supplierId: origin.supplierId,
+          supplierBatchCode: origin.supplierBatchCode,
+          notes: `Transferido do lote ${origin.code}`,
+        },
+      });
+      destinationBatchId = destination.id;
+    }
+
+    await registerEntry(tx, {
+      companyId: input.companyId,
+      warehouseId: input.toWarehouseId,
+      productId: input.productId,
+      quantity: D(movement.quantity),
+      unitCost: D(movement.unitCost),
+      reason: "TRANSFER_IN",
+      batchId: destinationBatchId,
+      note: input.note ?? "Transferência entre locais",
+      userId: input.userId,
+      updateAvgCost: false,
+    });
+  }
+
+  return exit;
+}

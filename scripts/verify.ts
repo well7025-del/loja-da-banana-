@@ -39,7 +39,7 @@ function checkTrue(label: string, condition: boolean, detail = "") {
 }
 
 async function main() {
-  const { registerEntry, registerExit, registerAdjustment } = await import("../src/server/services/inventory");
+  const { registerEntry, registerExit, registerAdjustment, transferStock } = await import("../src/server/services/inventory");
   const { computeRecipeCost, computePrice } = await import("../src/server/services/costing");
   const { createProductionOrder, finishProduction, explodeRecipe } = await import("../src/server/services/production");
   const { createSale, quoteSale, cancelSale } = await import("../src/server/services/sales");
@@ -259,6 +259,36 @@ async function main() {
   });
   const adjusted = await prisma.inventory.findFirstOrThrow({ where: { productId: chips.id } });
   check("saldo ajustado para a contagem", new Prisma.Decimal(adjusted.quantity).toFixed(0), "28");
+
+  // ============ 11b. TRANSFERÊNCIA ENTRE LOCAIS ============
+  console.log("\n11b) Transferência entre locais mantém o lote rastreável");
+  const loja = await prisma.warehouse.findFirstOrThrow({
+    where: { companyId: company.id, isDefault: false },
+  });
+  await prisma.$transaction(async (tx) => {
+    await transferStock(tx, {
+      companyId: company.id,
+      fromWarehouseId: warehouse.id,
+      toWarehouseId: loja.id,
+      productId: chips.id,
+      quantity: 8,
+      userId: user.id,
+    });
+  });
+  const naFabrica = await prisma.inventory.findFirstOrThrow({
+    where: { productId: chips.id, warehouseId: warehouse.id },
+  });
+  const naLoja = await prisma.inventory.findFirstOrThrow({
+    where: { productId: chips.id, warehouseId: loja.id },
+  });
+  check("saldo na fábrica após transferir 8", new Prisma.Decimal(naFabrica.quantity).toFixed(0), "20");
+  check("saldo na loja", new Prisma.Decimal(naLoja.quantity).toFixed(0), "8");
+  const loteDestino = await prisma.batch.findFirst({
+    where: { warehouseId: loja.id, productId: chips.id },
+  });
+  checkTrue("lote criado no destino, derivado da origem", Boolean(loteDestino?.code.includes("-T")), loteDestino?.code ?? "");
+  const custoDepois = await prisma.product.findUniqueOrThrow({ where: { id: chips.id } });
+  check("custo médio não muda na transferência", new Prisma.Decimal(custoDepois.avgCost).toFixed(2), "26.55");
 
   // ============ 12. CENTRAL DE DECISÕES ============
   console.log("\n12) Central de Decisões gera recomendações a partir dos dados reais");

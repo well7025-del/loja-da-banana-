@@ -41,6 +41,7 @@ export async function startProductionAction(_prev: ActionState, form: FormData):
 }
 
 export async function finishProductionAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  let target = "";
   try {
     const user = await requirePermission("production.update");
     const consumptions = rows(form, "consumptions", ["productId", "actualQty"])
@@ -55,12 +56,13 @@ export async function finishProductionAction(_prev: ActionState, form: FormData)
     revalidatePath("/producao");
     revalidatePath("/estoque");
     revalidatePath("/");
-    return {
-      success: `Produção finalizada. Lote ${result.batch.code} gerado com custo de R$ ${result.unitCost.toFixed(2)} por unidade.`,
-    };
+    // O formulário de finalização deixa de existir depois de concluída, então a
+    // confirmação (com o número do lote) vai para a própria tela da ordem.
+    target = `/producao/${result.order.id}?lote=${encodeURIComponent(result.batch.code)}&custo=${result.unitCost.toFixed(2)}`;
   } catch (error) {
     return toActionError(error);
   }
+  redirect(target);
 }
 
 export async function cancelProductionAction(_prev: ActionState, form: FormData): Promise<ActionState> {

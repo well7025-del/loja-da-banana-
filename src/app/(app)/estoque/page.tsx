@@ -41,10 +41,11 @@ export default async function StockPage({
       </div>
 
       {can(user.permissions, "stock.create") && (
-        <div className="mt-3 grid grid-cols-3 gap-2">
+        <div className="mt-3 grid grid-cols-4 gap-2">
           <Link href="/estoque/entrada" className="btn-primary btn-sm">⬇️ Entrada</Link>
           <Link href="/estoque/saida" className="btn-ghost btn-sm">⬆️ Saída</Link>
           <Link href="/estoque/ajuste" className="btn-ghost btn-sm">⚖️ Ajuste</Link>
+          <Link href="/estoque/transferencia" className="btn-ghost btn-sm">🔀 Transferir</Link>
         </div>
       )}
 

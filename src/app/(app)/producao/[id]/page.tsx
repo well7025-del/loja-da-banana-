@@ -5,15 +5,21 @@ import { prisma } from "@/lib/db";
 import { D } from "@/lib/money";
 import { brl, datetime, num } from "@/lib/format";
 import { PRODUCTION_STATUS_LABELS } from "@/lib/defaults";
-import { Badge, Card, PageHeader, SectionTitle, StatCard } from "@/components/ui";
+import { Badge, Card, FormMessage, PageHeader, SectionTitle, StatCard } from "@/components/ui";
 import { can } from "@/lib/permissions";
 import { FinishProductionForm, ProductionActions } from "./forms";
 
 export const dynamic = "force-dynamic";
 
-export default async function ProductionOrderPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ProductionOrderPage({
+  params, searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ lote?: string; custo?: string }>;
+}) {
   const user = (await getCurrentUser())!;
   const { id } = await params;
+  const { lote, custo } = await searchParams;
 
   const order = await prisma.productionOrder.findFirst({
     where: { id, companyId: user.companyId },
@@ -38,6 +44,14 @@ export default async function ProductionOrderPage({ params }: { params: Promise<
 
   return (
     <div>
+      {lote && (
+        <div className="mb-3">
+          <FormMessage
+            success={`Produção finalizada. Lote ${lote} gerado${custo ? ` com custo de R$ ${custo} por ${order.product.unit.toLowerCase()}` : ""}.`}
+          />
+        </div>
+      )}
+
       <PageHeader
         title={order.product.name}
         subtitle={`Ordem ${order.code}`}

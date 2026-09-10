@@ -6,7 +6,7 @@ import { requirePermission } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { nextCode } from "@/lib/codes";
 import { qty } from "@/lib/money";
-import { registerAdjustment, registerEntry, registerExit } from "@/server/services/inventory";
+import { registerAdjustment, registerEntry, registerExit, transferStock } from "@/server/services/inventory";
 import { type ActionState, optional, str, toActionError } from "./_helpers";
 import type { MovementReason } from "@prisma/client";
 
@@ -147,6 +147,44 @@ export async function stockAdjustAction(_prev: ActionState, form: FormData): Pro
 
     revalidatePath("/estoque");
     return { success: `Saldo de ${product.name} ajustado para ${counted.toFixed(3)} ${product.unit}.` };
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function stockTransferAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  try {
+    const user = await requirePermission("stock.create");
+    const productId = str(form, "productId");
+    if (!productId) return { error: "Selecione o produto." };
+    const quantity = qty(str(form, "quantity"));
+    if (quantity.lessThanOrEqualTo(0)) return { error: "Informe a quantidade." };
+
+    const fromWarehouseId = str(form, "fromWarehouseId");
+    const toWarehouseId = str(form, "toWarehouseId");
+    if (!fromWarehouseId || !toWarehouseId) return { error: "Escolha a origem e o destino." };
+
+    const product = await prisma.product.findFirstOrThrow({ where: { id: productId, companyId: user.companyId } });
+    const [from, to] = await Promise.all([
+      prisma.warehouse.findFirstOrThrow({ where: { id: fromWarehouseId, companyId: user.companyId } }),
+      prisma.warehouse.findFirstOrThrow({ where: { id: toWarehouseId, companyId: user.companyId } }),
+    ]);
+
+    await prisma.$transaction(async (tx) => {
+      await transferStock(tx, {
+        companyId: user.companyId,
+        fromWarehouseId, toWarehouseId, productId, quantity,
+        note: optional(form, "note"),
+        userId: user.id,
+      });
+      await audit({
+        user, action: "CREATE", entity: "InventoryMovement",
+        summary: `Transferiu ${quantity.toFixed(3)} ${product.unit} de ${product.name}: ${from.name} → ${to.name}`,
+      }, tx);
+    }, { timeout: 20000 });
+
+    revalidatePath("/estoque");
+    return { success: `${quantity.toFixed(3)} ${product.unit} de ${product.name} transferido de ${from.name} para ${to.name}.` };
   } catch (error) {
     return toActionError(error);
   }
