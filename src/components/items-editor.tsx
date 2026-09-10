@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { BarcodeScannerButton } from "./barcode-scanner";
 
 export type PickableProduct = {
   id: string;
@@ -133,15 +134,25 @@ export function ItemsEditor({
       {/* Busca e adição rápida */}
       <div>
         <label className="label" htmlFor="item-search">Adicionar produto</label>
-        <input
-          id="item-search"
-          type="search"
-          className="input"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Nome, código ou código de barras"
-          autoComplete="off"
-        />
+        <div className="flex gap-2">
+          <input
+            id="item-search"
+            type="search"
+            className="input"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Nome, código ou código de barras"
+            autoComplete="off"
+          />
+          <BarcodeScannerButton
+            label=""
+            onDetect={(code) => {
+              const found = products.find((p) => p.barcode === code || p.sku === code);
+              if (found) add(found);
+              else setQuery(code);
+            }}
+          />
+        </div>
         <div className="mt-2 grid grid-cols-2 gap-2">
           {filtered.map((product) => (
             <button

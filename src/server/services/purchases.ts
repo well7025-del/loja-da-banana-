@@ -128,9 +128,13 @@ export async function receivePurchase(
       const receivedQty = qty(line.receivedQty);
       if (receivedQty.lessThanOrEqualTo(0)) continue;
 
-      // rateio proporcional de frete/desconto
+      // Rateio de frete/desconto: proporcional ao valor do item no pedido e,
+      // em recebimento parcial, apenas à fração efetivamente recebida.
       const lineShare = subtotal.greaterThan(0) ? D(item.total).dividedBy(subtotal) : ZERO;
-      const lineExtras = extras.times(lineShare);
+      const receivedShare = D(item.quantity).greaterThan(0)
+        ? receivedQty.dividedBy(D(item.quantity))
+        : new Prisma.Decimal(1);
+      const lineExtras = extras.times(lineShare).times(receivedShare);
       const landedUnitCost = qty(
         D(item.unitPrice).plus(receivedQty.greaterThan(0) ? lineExtras.dividedBy(receivedQty) : ZERO),
       );

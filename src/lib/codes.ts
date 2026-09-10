@@ -46,6 +46,14 @@ export async function nextCode(
   when = new Date(),
 ): Promise<string> {
   const prefix = `${PREFIX[kind]}-${yyyymmdd(when)}`;
+
+  // Serializa a geração do código por empresa+tipo até o fim da transação.
+  // Sem isso, duas vendas simultâneas poderiam disputar o mesmo número.
+  await tx.$executeRawUnsafe(
+    `SELECT pg_advisory_xact_lock(hashtext($1))`,
+    `seq:${kind}:${companyId}`,
+  );
+
   const rows = await tx.$queryRawUnsafe<{ code: string }[]>(
     `SELECT "${COLUMN[kind]}" AS code FROM "${TABLE[kind]}"
      WHERE "companyId" = $1 AND "${COLUMN[kind]}" LIKE $2

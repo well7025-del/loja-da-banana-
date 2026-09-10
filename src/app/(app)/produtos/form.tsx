@@ -6,6 +6,7 @@ import { ActionForm, ConfirmForm } from "@/components/forms";
 import { Card, Field, SectionTitle } from "@/components/ui";
 import { deleteProductAction, saveProductAction } from "@/app/actions/products";
 import { PRODUCT_KIND_LABELS, UNIT_LABELS } from "@/lib/defaults";
+import { BarcodeScannerButton } from "@/components/barcode-scanner";
 
 export type ProductFormData = {
   id?: string;
@@ -45,6 +46,8 @@ export function ProductForm({
   saved?: boolean;
 }) {
   const [kind, setKind] = useState(product.kind ?? "FINISHED");
+  const [barcode, setBarcode] = useState(product.barcode ?? "");
+  const [imageUrl, setImageUrl] = useState(product.imageUrl ?? "");
   const isFinished = kind === "FINISHED" || kind === "RESALE";
 
   return (
@@ -83,7 +86,13 @@ export function ProductForm({
         </div>
 
         <Field label="Código de barras">
-          <input name="barcode" className="input" inputMode="numeric" defaultValue={product.barcode ?? ""} />
+          <div className="flex gap-2">
+            <input
+              name="barcode" className="input" inputMode="numeric"
+              value={barcode} onChange={(e) => setBarcode(e.target.value)}
+            />
+            <BarcodeScannerButton label="" onDetect={setBarcode} />
+          </div>
         </Field>
 
         <Field label="Categoria">
@@ -180,7 +189,21 @@ export function ProductForm({
         </>
       )}
 
-      <Card>
+      <Card className="space-y-3">
+        <Field label="Foto do produto" hint="Endereço da imagem (URL)">
+          <input
+            name="imageUrl" className="input" type="url" inputMode="url"
+            value={imageUrl} onChange={(e) => setImageUrl(e.target.value)}
+            placeholder="https://..."
+          />
+        </Field>
+        {imageUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={imageUrl} alt={`Foto de ${product.name ?? "produto"}`}
+            className="h-32 w-32 rounded-xl border border-[var(--border)] object-cover"
+          />
+        )}
         <Field label="Observações">
           <textarea name="description" className="input" rows={3} defaultValue={product.description ?? ""} />
         </Field>

@@ -10,3 +10,6 @@ next-env.d.ts
 /backups/
 /public/uploads/
 tsconfig.tsbuildinfo
+
+# utilitário local de sessão para testes manuais
+.devsession.ts

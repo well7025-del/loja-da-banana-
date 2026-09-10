@@ -30,40 +30,126 @@ const D = (v: number | string) => new Prisma.Decimal(v);
 
 async function limpar(companyId: string) {
   console.log("→ Removendo dados de demonstração...");
+
   const customers = await prisma.customer.findMany({
     where: { companyId, name: { startsWith: PREFIX } }, select: { id: true },
   });
   const suppliers = await prisma.supplier.findMany({
     where: { companyId, name: { startsWith: PREFIX } }, select: { id: true },
   });
-  const customerIds = customers.map((c) => c.id);
-  const supplierIds = suppliers.map((s) => s.id);
-
+  const productions = await prisma.productionOrder.findMany({
+    where: { companyId, notes: { startsWith: PREFIX } }, select: { id: true },
+  });
   const sales = await prisma.sale.findMany({
-    where: { companyId, customerId: { in: customerIds } }, select: { id: true },
+    where: { companyId, OR: [{ customerId: { in: customers.map((c) => c.id) } }, { notes: { startsWith: PREFIX } }] },
+    select: { id: true },
   });
   const purchases = await prisma.purchaseOrder.findMany({
-    where: { companyId, supplierId: { in: supplierIds } }, select: { id: true },
+    where: { companyId, OR: [{ supplierId: { in: suppliers.map((s) => s.id) } }, { notes: { startsWith: PREFIX } }] },
+    select: { id: true },
   });
+
+  const customerIds = customers.map((c) => c.id);
+  const supplierIds = suppliers.map((s) => s.id);
+  const productionIds = productions.map((p) => p.id);
   const saleIds = sales.map((s) => s.id);
   const purchaseIds = purchases.map((p) => p.id);
 
+  // Financeiro
   await prisma.payment.deleteMany({
-    where: { financeEntry: { OR: [{ saleId: { in: saleIds } }, { purchaseOrderId: { in: purchaseIds } }] } },
+    where: {
+      financeEntry: {
+        OR: [
+          { saleId: { in: saleIds } }, { purchaseOrderId: { in: purchaseIds } },
+          { customerId: { in: customerIds } }, { supplierId: { in: supplierIds } },
+        ],
+      },
+    },
   });
   await prisma.financeEntry.deleteMany({
-    where: { OR: [{ saleId: { in: saleIds } }, { purchaseOrderId: { in: purchaseIds } }, { customerId: { in: customerIds } }, { supplierId: { in: supplierIds } }] },
+    where: {
+      OR: [
+        { saleId: { in: saleIds } }, { purchaseOrderId: { in: purchaseIds } },
+        { customerId: { in: customerIds } }, { supplierId: { in: supplierIds } },
+      ],
+    },
   });
+  await prisma.expense.deleteMany({ where: { companyId, description: { startsWith: PREFIX } } });
+
+  // Movimentos de estoque das operações demo
   await prisma.inventoryMovement.deleteMany({
-    where: { companyId, OR: [{ refId: { in: [...saleIds, ...purchaseIds] } }, { note: { contains: PREFIX } }] },
+    where: {
+      companyId,
+      OR: [
+        { refId: { in: [...saleIds, ...purchaseIds, ...productionIds] } },
+        { productionOrderId: { in: productionIds } },
+        { note: { contains: PREFIX } },
+      ],
+    },
   });
+
+  // Produção e lotes
+  await prisma.inventoryMovement.deleteMany({
+    where: { batch: { productionOrderId: { in: productionIds } } },
+  });
+  await prisma.batch.deleteMany({ where: { productionOrderId: { in: productionIds } } });
+  await prisma.productionConsumption.deleteMany({ where: { productionOrderId: { in: productionIds } } });
+  await prisma.productionOrder.deleteMany({ where: { id: { in: productionIds } } });
+
+  // Lotes de compra órfãos (sem movimento restante)
+  const orphanBatches = await prisma.batch.findMany({
+    where: { companyId, origin: "PURCHASE", movements: { none: {} } },
+    select: { id: true },
+  });
+  await prisma.batch.deleteMany({ where: { id: { in: orphanBatches.map((b) => b.id) } } });
+
+  // Vendas, compras e cadastros
   await prisma.saleItem.deleteMany({ where: { saleId: { in: saleIds } } });
   await prisma.sale.deleteMany({ where: { id: { in: saleIds } } });
   await prisma.purchaseItem.deleteMany({ where: { purchaseOrderId: { in: purchaseIds } } });
   await prisma.purchaseOrder.deleteMany({ where: { id: { in: purchaseIds } } });
   await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
   await prisma.supplier.deleteMany({ where: { id: { in: supplierIds } } });
-  console.log("✅ Dados de demonstração removidos.");
+
+  // Fichas técnicas de demonstração
+  await prisma.recipe.deleteMany({ where: { companyId, name: { contains: "receita de demonstração" } } });
+
+  await recomputeInventory(companyId);
+  console.log("✅ Dados de demonstração removidos e saldos recalculados.");
+}
+
+/**
+ * Recalcula os saldos a partir dos movimentos que sobraram.
+ * Depois de apagar operações, os saldos precisam refletir apenas o que restou.
+ */
+async function recomputeInventory(companyId: string) {
+  const rows = await prisma.$queryRaw<{ warehouseId: string; productId: string; saldo: Prisma.Decimal }[]>`
+    SELECT "warehouseId", "productId",
+           COALESCE(SUM(CASE WHEN type = 'IN' THEN quantity ELSE -quantity END), 0) AS saldo
+    FROM inventory_movements
+    WHERE "companyId" = ${companyId} AND type <> 'ADJUST'
+    GROUP BY "warehouseId", "productId"
+  `;
+  const saldos = new Map(rows.map((r) => [`${r.warehouseId}:${r.productId}`, D(r.saldo.toString())]));
+
+  const balances = await prisma.inventory.findMany({ where: { companyId } });
+  for (const balance of balances) {
+    const saldo = saldos.get(`${balance.warehouseId}:${balance.productId}`) ?? D(0);
+    await prisma.inventory.update({
+      where: { id: balance.id },
+      data: { quantity: saldo.lessThan(0) ? D(0) : saldo, reserved: D(0) },
+    });
+  }
+
+  // Zera o custo médio de itens que ficaram sem nenhuma entrada
+  const semMovimento = await prisma.product.findMany({
+    where: { companyId, movements: { none: { type: "IN" } } },
+    select: { id: true },
+  });
+  await prisma.product.updateMany({
+    where: { id: { in: semMovimento.map((p) => p.id) } },
+    data: { avgCost: 0, lastCost: 0 },
+  });
 }
 
 async function main() {

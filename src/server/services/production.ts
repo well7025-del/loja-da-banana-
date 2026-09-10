@@ -26,7 +26,7 @@ export async function explodeRecipe(productId: string, plannedQty: Prisma.Decima
     recipe.items.map(async (item) => {
       const gross = qty(grossQuantity(D(item.quantity), D(item.lossPct)).times(factor));
       const balance = await prisma.inventory.aggregate({
-        where: { productId: item.productId },
+        where: { productId: item.productId, companyId: recipe.companyId },
         _sum: { quantity: true },
       });
       const available = D(balance._sum.quantity);

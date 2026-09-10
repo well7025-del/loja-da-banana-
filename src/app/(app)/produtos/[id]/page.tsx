@@ -41,6 +41,15 @@ export default async function ProductPage({
         subtitle={`${product.sku}${product.barcode ? ` · ${product.barcode}` : ""}`}
       />
 
+      {product.imageUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={product.imageUrl}
+          alt={`Foto de ${product.name}`}
+          className="mb-3 h-40 w-full rounded-2xl border border-[var(--border)] object-cover"
+        />
+      )}
+
       <div className="grid grid-cols-3 gap-2.5">
         <StatCard label="Em estoque" value={`${num(stock, 1)}`} hint={product.unit.toLowerCase()} />
         <StatCard label="Custo médio" value={brl(product.avgCost)} hint="por unidade" />
