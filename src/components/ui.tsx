@@ -86,7 +86,7 @@ export function Field({
       {label && (
         <span className="label">
           {label}
-          {required && <span className="text-red-500"> *</span>}
+          {required && <span className="text-red-500" aria-hidden> *</span>}
         </span>
       )}
       {children}
