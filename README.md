@@ -67,7 +67,7 @@ O app abre em tela cheia, com ícone próprio, como um aplicativo.
 | `npm run db:seed:demo -- --limpar` | Remove os dados de demonstração |
 | `npm run db:studio` | Navegador visual do banco |
 | `npm run db:backup` | Backup compactado em `backups/` |
-| `npm run verify` | Testa as regras de negócio (48 verificações) |
+| `npm run verify` | Testa as regras de negócio (52 verificações) |
 | `npm run test:e2e` | Testa a interface em tela de celular |
 | `npm run typecheck` | Verificação de tipos |
 
@@ -104,9 +104,10 @@ técnica, mostra a matéria-prima necessária e avisa o que falta. Ao finalizar,
 baixa os insumos, gera o lote `LB-AAAAMMDD-000`, dá entrada no produto acabado
 e apura custo e rendimento reais.
 
-**Estoque** — entrada, saída, ajuste de inventário, lotes com validade,
-rastreabilidade completa (de qual matéria-prima veio cada lote e para onde ele
-foi) e ficha de movimentação por item.
+**Estoque** — entrada, saída, ajuste de inventário, transferência entre locais
+(fábrica, loja, centro de distribuição), lotes com validade, rastreabilidade
+completa (de qual matéria-prima veio cada lote e para onde ele foi) e ficha de
+movimentação por item.
 
 **Fichas técnicas** — ingredientes, perdas, rendimento, mão de obra e energia,
 com o custo recalculado em tempo real conforme o custo médio das compras.
@@ -140,6 +141,8 @@ configurável, parâmetros de preço e alertas, e trilha de auditoria.
 - **Limite de crédito**: venda a prazo é bloqueada se estourar o limite.
 - **Estoque insuficiente**: a venda é bloqueada (configurável).
 - **Exclusão lógica**: cadastros são inativados, nunca apagados.
+- **Transferência entre locais**: o lote no destino aponta para a produção ou
+  compra de origem, mantendo a rastreabilidade de ponta a ponta.
 
 ---
 

@@ -84,6 +84,16 @@ Se a mercadoria vem depois, deixe a marcação desligada e use o botão
 
 ---
 
+## Transferir estoque para a loja
+
+**Estoque → Transferir** → escolha o produto, o local de origem e o de destino,
+e a quantidade.
+
+Sai primeiro o lote mais próximo do vencimento, e o lote continua rastreável no
+destino: dá para consultar de qual produção ou compra ele veio.
+
+---
+
 ## Contas a pagar e a receber
 
 **Financeiro → A receber** (ou **A pagar**) → **toque no título** → confirme o

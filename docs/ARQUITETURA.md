@@ -54,7 +54,7 @@ src/
     actions/             server actions: validam, checam permissão e chamam os serviços
     api/                 rotas HTTP
   components/            biblioteca de interface reutilizável
-scripts/verify.ts        teste das regras de negócio (48 verificações)
+scripts/verify.ts        teste das regras de negócio (52 verificações)
 tests/fluxos.spec.ts     teste de ponta a ponta pela interface, em tela de celular
 ```
 
@@ -196,7 +196,17 @@ NOVO → CONFIRMADO → EM SEPARAÇÃO → EM PRODUÇÃO → PRONTO → DESPACHA
 Faturar → gera a venda, libera a reserva e baixa o estoque de verdade
 ```
 
-### 4.5 Formação de preço
+### 4.5 Transferência entre locais
+
+```
+Sai do local de origem por FEFO
+   └─ para cada lote consumido, cria no destino um lote  LOTE-T1, LOTE-T2...
+      que mantém validade, custo e o vínculo com a produção/compra original
+Entra no local de destino
+   └─ o custo médio da empresa NÃO muda: o item apenas trocou de lugar
+```
+
+### 4.6 Formação de preço
 
 Método do divisor, para que a margem informada seja margem de verdade:
 
@@ -280,6 +290,12 @@ ficam em **Configurações**.
 | 11 | Relatórios | ✅ |
 | 12 | Central de Decisões | ✅ |
 
+Verificação automatizada: `npm run verify` cobre 52 regras de negócio
+(custo médio, ficha técnica, formação de preço, produção e rendimento,
+descontos, venda, financeiro, compra, transferência, cancelamento, ajuste,
+recomendações e auditoria) e `npm run test:e2e` cobre 9 fluxos completos pela
+interface, em viewport de celular.
+
 ### Próximos passos sugeridos
 
 1. Preencher preços, custos e estoques mínimos reais nos cadastros.
@@ -293,5 +309,5 @@ ficam em **Configurações**.
 - Leitura de código de barras pela câmera (a busca já aceita o código digitado).
 - Emissão de NF-e via integração com provedor fiscal.
 - Envio de cobrança e catálogo por WhatsApp (os links já existem nas telas).
-- Múltiplos estoques na interface (o banco já suporta).
+- Múltiplas empresas/unidades na interface (o banco já suporta).
 - Aplicativo Android empacotado a partir do mesmo código.
