@@ -9,6 +9,8 @@ import { qty } from "@/lib/money";
 import { registerAdjustment, registerEntry, registerExit, transferStock } from "@/server/services/inventory";
 import { type ActionState, optional, str, toActionError } from "./_helpers";
 import type { MovementReason } from "@prisma/client";
+import { num } from "@/lib/format";
+import { MOVEMENT_REASON_LABELS } from "@/lib/defaults";
 
 async function defaultWarehouse(companyId: string, requested?: string | null) {
   if (requested) {
@@ -71,13 +73,13 @@ export async function stockEntryAction(_prev: ActionState, form: FormData): Prom
 
       await audit({
         user, action: "CREATE", entity: "InventoryMovement",
-        summary: `Entrada de ${quantity.toFixed(3)} ${product.unit} de ${product.name}`,
+        summary: `Entrada de ${num(quantity, 3)} ${product.unit.toLowerCase()} de ${product.name}`,
       }, tx);
     });
 
     revalidatePath("/estoque");
     revalidatePath("/");
-    return { success: `Entrada registrada: ${quantity.toFixed(3)} ${product.unit} de ${product.name}.` };
+    return { success: `Entrada registrada: ${num(quantity, 3)} ${product.unit.toLowerCase()} de ${product.name}.` };
   } catch (error) {
     return toActionError(error);
   }
@@ -107,13 +109,13 @@ export async function stockExitAction(_prev: ActionState, form: FormData): Promi
       });
       await audit({
         user, action: "CREATE", entity: "InventoryMovement",
-        summary: `Saída de ${quantity.toFixed(3)} ${product.unit} de ${product.name} (${str(form, "reason")})`,
+        summary: `Saída de ${num(quantity, 3)} ${product.unit.toLowerCase()} de ${product.name} (${MOVEMENT_REASON_LABELS[str(form, "reason")] ?? str(form, "reason")})`,
       }, tx);
     });
 
     revalidatePath("/estoque");
     revalidatePath("/");
-    return { success: `Saída registrada: ${quantity.toFixed(3)} ${product.unit} de ${product.name}.` };
+    return { success: `Saída registrada: ${num(quantity, 3)} ${product.unit.toLowerCase()} de ${product.name}.` };
   } catch (error) {
     return toActionError(error);
   }
@@ -140,13 +142,13 @@ export async function stockAdjustAction(_prev: ActionState, form: FormData): Pro
       if (movement) {
         await audit({
           user, action: "UPDATE", entity: "InventoryMovement",
-          summary: `Ajuste de inventário em ${product.name}: saldo ${counted.toFixed(3)} ${product.unit}`,
+          summary: `Ajuste de inventário em ${product.name}: saldo ${num(counted, 3)} ${product.unit.toLowerCase()}`,
         }, tx);
       }
     });
 
     revalidatePath("/estoque");
-    return { success: `Saldo de ${product.name} ajustado para ${counted.toFixed(3)} ${product.unit}.` };
+    return { success: `Saldo de ${product.name} ajustado para ${num(counted, 3)} ${product.unit.toLowerCase()}.` };
   } catch (error) {
     return toActionError(error);
   }
@@ -179,12 +181,12 @@ export async function stockTransferAction(_prev: ActionState, form: FormData): P
       });
       await audit({
         user, action: "CREATE", entity: "InventoryMovement",
-        summary: `Transferiu ${quantity.toFixed(3)} ${product.unit} de ${product.name}: ${from.name} → ${to.name}`,
+        summary: `Transferiu ${num(quantity, 3)} ${product.unit.toLowerCase()} de ${product.name}: ${from.name} → ${to.name}`,
       }, tx);
     }, { timeout: 20000 });
 
     revalidatePath("/estoque");
-    return { success: `${quantity.toFixed(3)} ${product.unit} de ${product.name} transferido de ${from.name} para ${to.name}.` };
+    return { success: `${num(quantity, 3)} ${product.unit.toLowerCase()} de ${product.name} transferido de ${from.name} para ${to.name}.` };
   } catch (error) {
     return toActionError(error);
   }

@@ -47,7 +47,7 @@ export default async function ProductionOrderPage({
       {lote && (
         <div className="mb-3">
           <FormMessage
-            success={`Produção finalizada. Lote ${lote} gerado${custo ? ` com custo de R$ ${custo} por ${order.product.unit.toLowerCase()}` : ""}.`}
+            success={`Produção finalizada. Lote ${lote} gerado${custo ? ` com custo de ${brl(custo)} por ${order.product.unit.toLowerCase()}` : ""}.`}
           />
         </div>
       )}

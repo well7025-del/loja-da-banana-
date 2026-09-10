@@ -63,9 +63,9 @@ export function StatCard({
 }) {
   const body = (
     <div className="card card-pad h-full">
-      <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-500">
-        {icon && <span aria-hidden>{icon}</span>}
-        <span className="truncate">{label}</span>
+      <div className="flex items-start gap-1.5 text-xs font-semibold uppercase leading-tight tracking-wide text-ink-500">
+        {icon && <span aria-hidden className="leading-none">{icon}</span>}
+        <span>{label}</span>
       </div>
       <div className={`mt-1.5 text-[1.35rem] font-bold leading-tight ${
         tone === "red" ? "text-red-600" : tone === "green" ? "text-leaf-700" : "text-ink-900"

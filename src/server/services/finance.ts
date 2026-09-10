@@ -8,6 +8,7 @@ import { DEFAULT_CATEGORIES } from "@/lib/defaults";
 
 export { DEFAULT_CATEGORIES };
 import type { FinanceDirection, PaymentMethod } from "@prisma/client";
+import { brl } from "@/lib/format";
 
 export async function createFinanceEntry(
   user: SessionUser,
@@ -56,7 +57,7 @@ export async function createFinanceEntry(
     await audit(
       {
         user, action: "CREATE", entity: "FinanceEntry", entityId: entries[0]?.id,
-        summary: `${input.direction === "PAYABLE" ? "Conta a pagar" : "Conta a receber"}: ${input.description} — R$ ${amount.toFixed(2)}`,
+        summary: `${input.direction === "PAYABLE" ? "Conta a pagar" : "Conta a receber"}: ${input.description} — ${brl(amount)}`,
       },
       tx,
     );
@@ -83,7 +84,7 @@ export async function registerPayment(
     const amount = input.amount ? money(input.amount) : outstanding;
     if (amount.lessThanOrEqualTo(0)) throw new BusinessError("Valor de pagamento inválido.");
     if (amount.greaterThan(outstanding)) {
-      throw new BusinessError(`Valor acima do saldo devedor (R$ ${outstanding.toFixed(2)}).`);
+      throw new BusinessError(`Valor acima do saldo devedor (${brl(outstanding)}).`);
     }
 
     await tx.payment.create({
@@ -112,7 +113,7 @@ export async function registerPayment(
     await audit(
       {
         user, action: "UPDATE", entity: "FinanceEntry", entityId: entry.id,
-        summary: `Baixa de R$ ${amount.toFixed(2)} em "${entry.description}" (${input.method})`,
+        summary: `Baixa de ${brl(amount)} em "${entry.description}" (${input.method})`,
       },
       tx,
     );

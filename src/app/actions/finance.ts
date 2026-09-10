@@ -8,6 +8,7 @@ import { money } from "@/lib/money";
 import { createFinanceEntry, registerPayment } from "@/server/services/finance";
 import { type ActionState, bool, optional, str, toActionError } from "./_helpers";
 import type { FinanceDirection, PaymentMethod } from "@prisma/client";
+import { brl } from "@/lib/format";
 
 export async function createFinanceEntryAction(_prev: ActionState, form: FormData): Promise<ActionState> {
   try {
@@ -103,7 +104,7 @@ export async function saveExpenseAction(_prev: ActionState, form: FormData): Pro
 
     await audit({
       user, action: "CREATE", entity: "Expense", entityId: expense.id,
-      summary: `Despesa: ${description} — R$ ${amount.toFixed(2)}`,
+      summary: `Despesa: ${description} — ${brl(amount)}`,
     });
     revalidatePath("/financeiro/despesas");
     return { success: "Despesa registrada." };

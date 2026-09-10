@@ -6,6 +6,7 @@ import { audit } from "@/lib/audit";
 import type { SessionUser } from "@/lib/auth";
 import { BusinessError, registerEntry, registerExit } from "./inventory";
 import { computeRecipeCost, grossQuantity } from "./costing";
+import { brl, num } from "@/lib/format";
 
 const ONE = new Prisma.Decimal(1);
 const HUNDRED = new Prisma.Decimal(100);
@@ -118,7 +119,7 @@ export async function createProductionOrder(
         action: "CREATE",
         entity: "ProductionOrder",
         entityId: created.id,
-        summary: `Ordem ${code}: ${plannedQty.toFixed(3)} de ${product.name}`,
+        summary: `Ordem ${code}: ${num(plannedQty, 3)} ${product.unit.toLowerCase()} de ${product.name}`,
         after: { code, plannedQty: plannedQty.toString() },
       },
       tx,
@@ -360,7 +361,7 @@ export async function finishProduction(
         action: "UPDATE",
         entity: "ProductionOrder",
         entityId: order.id,
-        summary: `Finalizou ${order.code}: ${producedQty.toFixed(3)} ${order.product.unit} — lote ${batchCode} — custo ${totalCost.toFixed(2)}`,
+        summary: `Finalizou ${order.code}: ${num(producedQty, 3)} ${order.product.unit.toLowerCase()} — lote ${batchCode} — custo ${brl(totalCost)}`,
         after: {
           producedQty: producedQty.toString(),
           totalCost: totalCost.toString(),

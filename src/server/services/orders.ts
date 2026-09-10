@@ -7,6 +7,7 @@ import type { SessionUser } from "@/lib/auth";
 import { BusinessError } from "./inventory";
 import { quoteSale } from "./sales";
 import type { OrderStatus, PaymentMethod, SaleChannel } from "@prisma/client";
+import { brl } from "@/lib/format";
 
 /** Status a partir dos quais o estoque fica reservado para o pedido. */
 const RESERVING: OrderStatus[] = ["CONFIRMED", "PICKING", "IN_PRODUCTION", "READY", "DISPATCHED"];
@@ -62,7 +63,7 @@ export async function createOrder(
       include: { items: true, customer: true },
     });
     await audit(
-      { user, action: "CREATE", entity: "Order", entityId: order.id, summary: `Pedido ${number} — ${order.customer.name} — R$ ${quote.total.toFixed(2)}` },
+      { user, action: "CREATE", entity: "Order", entityId: order.id, summary: `Pedido ${number} — ${order.customer.name} — ${brl(quote.total)}` },
       tx,
     );
     return order;

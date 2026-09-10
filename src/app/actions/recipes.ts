@@ -8,6 +8,7 @@ import { audit } from "@/lib/audit";
 import { money, qty, pct } from "@/lib/money";
 import { type ActionState, optional, rows, str, toActionError } from "./_helpers";
 import type { UnitOfMeasure } from "@prisma/client";
+import { brl } from "@/lib/format";
 
 export async function saveRecipeAction(_prev: ActionState, form: FormData): Promise<ActionState> {
   let target = "";
@@ -85,7 +86,7 @@ export async function applyRecipeCostAction(_prev: ActionState, form: FormData):
       summary: `Aplicou o custo da ficha técnica (R$ ${result.cost.costPerUnit.toFixed(4)}) ao produto`,
     });
     revalidatePath(`/fichas-tecnicas/${recipeId}`);
-    return { success: `Custo de R$ ${result.cost.costPerUnit.toFixed(2)} aplicado ao produto.` };
+    return { success: `Custo de ${brl(result.cost.costPerUnit)} aplicado ao produto.` };
   } catch (error) {
     return toActionError(error);
   }

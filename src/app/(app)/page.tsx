@@ -51,7 +51,7 @@ export default async function DashboardPage() {
       <SectionTitle>Resumo</SectionTitle>
       <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-3">
         <StatCard
-          icon="🛒" label="Vendas de hoje" value={brl(data.salesToday.total)}
+          icon="🛒" label="Vendas hoje" value={brl(data.salesToday.total)}
           hint={`${data.salesToday.count} venda(s)`} href="/vendas"
         />
         <StatCard
@@ -59,7 +59,7 @@ export default async function DashboardPage() {
           hint={`${data.salesMonth.count} venda(s)`} href="/relatorios/vendas"
         />
         <StatCard
-          icon="📈" label="Lucro estimado no mês" value={brl(data.salesMonth.profit)}
+          icon="📈" label="Lucro do mês" value={brl(data.salesMonth.profit)}
           hint={`Margem de ${num(data.salesMonth.marginPct, 1)}%`} tone="green" href="/relatorios/margem"
         />
         <StatCard
@@ -89,11 +89,11 @@ export default async function DashboardPage() {
           href="/estoque?filtro=critico"
         />
         <StatCard
-          icon="🏭" label="Produção de hoje" value={`${num(data.productionToday.qty, 1)} kg`}
+          icon="🏭" label="Produção hoje" value={`${num(data.productionToday.qty, 1)} kg`}
           hint={`${data.productionToday.count} produção(ões)`} href="/producao"
         />
         <StatCard
-          icon="📦" label="Produtos acabados" value={`${num(data.finishedQty, 1)} kg`}
+          icon="📦" label="Produto acabado" value={`${num(data.finishedQty, 1)} kg`}
           hint={`Estoque total ${brl(data.stockValue)}`} href="/estoque"
         />
       </div>

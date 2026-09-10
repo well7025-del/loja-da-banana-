@@ -1,6 +1,8 @@
 import "server-only";
 import { Prisma, prisma } from "@/lib/db";
 import { D, money, qty, pct, ZERO } from "@/lib/money";
+import { brl, num } from "@/lib/format";
+import { UNIT_LABELS } from "@/lib/defaults";
 import { getSettings } from "./settings";
 import { computePriceWithDefaults } from "./costing";
 
@@ -18,6 +20,7 @@ export type Insight = {
 };
 
 const daysAgo = (n: number) => new Date(Date.now() - n * 86400000);
+const unit = (u: string) => UNIT_LABELS[u] ?? u.toLowerCase();
 
 /**
  * CENTRAL DE DECISÕES
@@ -96,11 +99,11 @@ export async function getInsights(companyId: string): Promise<Insight[]> {
       id: `prod-${p.id}`,
       level: stock.lessThanOrEqualTo(0) ? "danger" : "warning",
       icon: "🏭",
-      title: `Recomenda-se produzir ${suggestion.toFixed(0)} ${p.unit} de ${p.name}`,
+      title: `Recomenda-se produzir ${num(suggestion, 0)} ${unit(p.unit)} de ${p.name}`,
       detail:
-        `Estoque atual ${stock.toFixed(1)} ${p.unit} contra mínimo de ${min.toFixed(1)} ${p.unit}.` +
+        `Estoque atual ${num(stock, 1)} ${unit(p.unit)} contra mínimo de ${num(min, 1)} ${unit(p.unit)}.` +
         (dailySales.greaterThan(0)
-          ? ` Venda média de ${dailySales.toFixed(2)} ${p.unit}/dia nos últimos 30 dias — cobertura alvo de ${coverageDays} dias.`
+          ? ` Venda média de ${num(dailySales, 2)} ${unit(p.unit)}/dia nos últimos 30 dias — cobertura alvo de ${coverageDays} dias.`
           : " Sem histórico de vendas nos últimos 30 dias; sugestão baseada no estoque mínimo."),
       action: p.recipe
         ? { label: "Registrar produção", href: `/producao/nova?produto=${p.id}&qtd=${suggestion.toFixed(0)}` }
@@ -129,10 +132,10 @@ export async function getInsights(companyId: string): Promise<Insight[]> {
       id: `buy-${p.id}`,
       level: stock.lessThanOrEqualTo(0) ? "danger" : "warning",
       icon: "📦",
-      title: `Recomenda-se comprar ${suggestion.toFixed(0)} ${p.unit} de ${p.name}`,
+      title: `Recomenda-se comprar ${num(suggestion, 0)} ${unit(p.unit)} de ${p.name}`,
       detail:
-        `Saldo de ${stock.toFixed(1)} ${p.unit} abaixo do mínimo de ${min.toFixed(1)} ${p.unit}.` +
-        (daily.greaterThan(0) ? ` Consumo de ${daily.toFixed(2)} ${p.unit}/dia na produção.` : ""),
+        `Saldo de ${num(stock, 1)} ${unit(p.unit)} abaixo do mínimo de ${num(min, 1)} ${unit(p.unit)}.` +
+        (daily.greaterThan(0) ? ` Consumo de ${num(daily, 2)} ${unit(p.unit)}/dia na produção.` : ""),
       action: { label: "Registrar compra", href: `/compras/nova?produto=${p.id}&qtd=${suggestion.toFixed(0)}` },
       weight: stock.lessThanOrEqualTo(0) ? 95 : 75,
     });
@@ -167,8 +170,8 @@ export async function getInsights(companyId: string): Promise<Insight[]> {
       id: `price-${productId}`,
       level: up ? "warning" : "success",
       icon: up ? "⚠️" : "💚",
-      title: `${product.name} ${up ? "aumentou" : "reduziu"} ${variation.abs().toFixed(1)}% no último mês`,
-      detail: `Preço médio de compra passou de R$ ${old.toFixed(2)} para R$ ${recent.toFixed(2)} por ${product.unit}. ${up ? "Revise a formação de preço dos produtos que usam este insumo." : "Boa oportunidade para reforçar o estoque."}`,
+      title: `${product.name} ${up ? "aumentou" : "reduziu"} ${num(variation.abs(), 1)}% no último mês`,
+      detail: `Preço médio de compra passou de ${brl(old)} para ${brl(recent)} por ${unit(product.unit)}. ${up ? "Revise a formação de preço dos produtos que usam este insumo." : "Boa oportunidade para reforçar o estoque."}`,
       action: { label: "Ver formação de preço", href: "/precificacao" },
       weight: up ? 70 : 40,
     });
@@ -184,7 +187,7 @@ export async function getInsights(companyId: string): Promise<Insight[]> {
         insights.push({
           id: `new-${productId}`, level: "success", icon: "📈",
           title: `${product.name} começou a vender neste período`,
-          detail: `R$ ${recent.toFixed(2)} nos últimos 30 dias, sem vendas nos 30 anteriores.`,
+          detail: `${brl(recent)} nos últimos 30 dias, sem vendas nos 30 anteriores.`,
           action: { label: "Ver relatório", href: `/relatorios/vendas-produto` },
           weight: 45,
         });
@@ -198,8 +201,8 @@ export async function getInsights(companyId: string): Promise<Insight[]> {
       id: `trend-${productId}`,
       level: growing ? "success" : "warning",
       icon: growing ? "📈" : "📉",
-      title: `${product.name} teve ${growing ? "crescimento" : "queda"} de ${variation.abs().toFixed(0)}% nas vendas`,
-      detail: `R$ ${old.toFixed(2)} → R$ ${recent.toFixed(2)} comparando os últimos 30 dias com os 30 anteriores.`,
+      title: `${product.name} teve ${growing ? "crescimento" : "queda"} de ${num(variation.abs(), 0)}% nas vendas`,
+      detail: `${brl(old)} → ${brl(recent)} comparando os últimos 30 dias com os 30 anteriores.`,
       action: { label: "Ver relatório", href: "/relatorios/vendas-produto" },
       weight: growing ? 55 : 65,
     });
@@ -221,15 +224,15 @@ export async function getInsights(companyId: string): Promise<Insight[]> {
     const worst = margins[margins.length - 1];
     insights.push({
       id: "margin-best", level: "success", icon: "💰",
-      title: `${best.product.name} tem a maior margem: ${best.marginPct.toFixed(1)}%`,
-      detail: `Faturou R$ ${best.revenue.toFixed(2)} nos últimos 30 dias. Vale priorizar produção e divulgação deste item.`,
+      title: `${best.product.name} tem a maior margem: ${num(best.marginPct, 1)}%`,
+      detail: `Faturou ${brl(best.revenue)} nos últimos 30 dias. Vale priorizar produção e divulgação deste item.`,
       action: { label: "Ver margens", href: "/relatorios/margem" },
       weight: 50,
     });
     if (worst.marginPct.lessThan(15)) {
       insights.push({
         id: "margin-worst", level: "warning", icon: "🔻",
-        title: `${worst.product.name} está com margem baixa: ${worst.marginPct.toFixed(1)}%`,
+        title: `${worst.product.name} está com margem baixa: ${num(worst.marginPct, 1)}%`,
         detail: `Revise o preço de venda, o custo da ficha técnica ou os descontos concedidos.`,
         action: { label: "Recalcular preço", href: `/precificacao?produto=${worst.product.id}` },
         weight: 72,
@@ -248,7 +251,7 @@ export async function getInsights(companyId: string): Promise<Insight[]> {
       insights.push({
         id: `underprice-${p.id}`, level: "danger", icon: "🚨",
         title: `${p.name} está sendo vendido abaixo do preço mínimo`,
-        detail: `Preço atual R$ ${D(p.salePrice).toFixed(2)} contra mínimo de R$ ${pricing.minimumPrice.toFixed(2)} (custo R$ ${D(p.avgCost).toFixed(2)} + impostos e despesas).`,
+        detail: `Preço atual ${brl(p.salePrice)} contra mínimo de ${brl(pricing.minimumPrice)} (custo ${brl(p.avgCost)} + impostos e despesas).`,
         action: { label: "Corrigir preço", href: `/precificacao?produto=${p.id}` },
         weight: 90,
       });
@@ -264,7 +267,7 @@ export async function getInsights(companyId: string): Promise<Insight[]> {
     insights.push({
       id: `inactive-${c.id}`, level: "warning", icon: "👤",
       title: `${c.name} não compra há ${days} dias`,
-      detail: `Última compra em ${last.soldAt.toLocaleDateString("pt-BR")} no valor de R$ ${D(last.total).toFixed(2)}.${c.whatsapp ? ` WhatsApp: ${c.whatsapp}` : ""}`,
+      detail: `Última compra em ${last.soldAt.toLocaleDateString("pt-BR")} no valor de ${brl(last.total)}.${c.whatsapp ? ` WhatsApp: ${c.whatsapp}` : ""}`,
       action: { label: "Ver cliente", href: `/clientes/${c.id}` },
       weight: 60,
     });
@@ -278,7 +281,7 @@ export async function getInsights(companyId: string): Promise<Insight[]> {
     insights.push({
       id: `idle-${p.id}`, level: "info", icon: "🕰️",
       title: `${p.name} está parado há mais de 60 dias`,
-      detail: `${stock.toFixed(1)} ${p.unit} em estoque, valor imobilizado de R$ ${money(stock.times(D(p.avgCost))).toFixed(2)}.`,
+      detail: `${num(stock, 1)} ${unit(p.unit)} em estoque, valor imobilizado de ${brl(money(stock.times(D(p.avgCost))))}.`,
       action: { label: "Ver estoque", href: "/estoque" },
       weight: 35,
     });
@@ -303,8 +306,8 @@ export async function getInsights(companyId: string): Promise<Insight[]> {
     if (last.lessThan(avg.times(new Prisma.Decimal(0.9)))) {
       insights.push({
         id: `yield-${productId}`, level: "warning", icon: "⚗️",
-        title: `Rendimento de ${data.name} caiu para ${last.toFixed(1)}%`,
-        detail: `A média das últimas ${data.yields.length} produções é ${avg.toFixed(1)}%. Verifique a qualidade da matéria-prima e o processo.`,
+        title: `Rendimento de ${data.name} caiu para ${num(last, 1)}%`,
+        detail: `A média das últimas ${data.yields.length} produções é ${num(avg, 1)}%. Verifique a qualidade da matéria-prima e o processo.`,
         action: { label: "Ver rendimento", href: "/relatorios/rendimento" },
         weight: 68,
       });

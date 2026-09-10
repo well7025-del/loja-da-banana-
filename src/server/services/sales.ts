@@ -8,6 +8,8 @@ import { BusinessError, registerEntry, registerExit } from "./inventory";
 import { basePrice, loadPriceRules, resolveLineDiscount, resolveOrderDiscount } from "./pricing";
 import { getSettings } from "./settings";
 import type { PaymentMethod, SaleChannel } from "@prisma/client";
+import { brl } from "@/lib/format";
+import { PAYMENT_METHOD_LABELS } from "@/lib/defaults";
 
 const HUNDRED = new Prisma.Decimal(100);
 
@@ -135,7 +137,7 @@ export async function createSale(user: SessionUser, input: CreateSaleInput) {
       const outstanding = D(open._sum.amount).minus(D(open._sum.paidAmount));
       if (outstanding.plus(quote.total).greaterThan(D(customer.creditLimit))) {
         throw new BusinessError(
-          `Limite de crédito excedido. Em aberto: R$ ${outstanding.toFixed(2)}, limite: R$ ${D(customer.creditLimit).toFixed(2)}.`,
+          `Limite de crédito excedido. Em aberto: ${brl(outstanding)}, limite: ${brl(customer.creditLimit)}.`,
         );
       }
     }
@@ -224,7 +226,7 @@ export async function createSale(user: SessionUser, input: CreateSaleInput) {
     await audit(
       {
         user, action: "CREATE", entity: "Sale", entityId: sale.id,
-        summary: `Venda ${number} — R$ ${quote.total.toFixed(2)} (${input.paymentMethod})`,
+        summary: `Venda ${number} — ${brl(quote.total)} (${PAYMENT_METHOD_LABELS[input.paymentMethod]})`,
         after: { number, total: quote.total.toString(), items: quote.lines.length },
       },
       tx,

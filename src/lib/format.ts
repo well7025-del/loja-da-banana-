@@ -14,6 +14,8 @@ const n = (v: Num): number => {
 };
 
 export const brl = (v: Num) => BRL.format(n(v));
+/** Igual a brl(), para uso dentro de textos montados no servidor. */
+export const brlText = brl;
 export const num = (v: Num, digits = 3) =>
   new Intl.NumberFormat("pt-BR", { maximumFractionDigits: digits }).format(n(v));
 export const int = (v: Num) => NUM.format(Math.round(n(v)));

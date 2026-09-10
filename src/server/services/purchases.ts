@@ -5,6 +5,7 @@ import { nextCode } from "@/lib/codes";
 import { audit } from "@/lib/audit";
 import type { SessionUser } from "@/lib/auth";
 import { BusinessError, registerEntry } from "./inventory";
+import { brl } from "@/lib/format";
 
 export type PurchaseItemInput = {
   productId: string;
@@ -74,7 +75,7 @@ export async function createPurchaseOrder(
       include: { items: true, supplier: true },
     });
     await audit(
-      { user, action: "CREATE", entity: "PurchaseOrder", entityId: created.id, summary: `Compra ${number} — ${created.supplier.name} — R$ ${total.toFixed(2)}` },
+      { user, action: "CREATE", entity: "PurchaseOrder", entityId: created.id, summary: `Compra ${number} — ${created.supplier.name} — ${brl(total)}` },
       tx,
     );
     return created;

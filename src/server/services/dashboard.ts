@@ -1,8 +1,10 @@
 import "server-only";
 import { Prisma, prisma } from "@/lib/db";
 import { D, money, pct, ZERO } from "@/lib/money";
+import { brl } from "@/lib/format";
 import { financeSummary } from "./finance";
 import { getSettings } from "./settings";
+import { num } from "@/lib/format";
 
 export function dayRange(reference = new Date()) {
   const start = new Date(reference); start.setHours(0, 0, 0, 0);
@@ -127,14 +129,14 @@ export async function getAlerts(companyId: string, data?: DashboardData): Promis
   if (d.finance.overduePayableCount > 0) {
     alerts.push({
       level: "danger", icon: "💸", title: `${d.finance.overduePayableCount} conta(s) vencida(s) a pagar`,
-      detail: `Total de R$ ${d.finance.overduePayable.toFixed(2)}`,
+      detail: `Total de ${brl(d.finance.overduePayable)}`,
       href: "/financeiro/pagar?filtro=vencidas",
     });
   }
   if (d.finance.overdueReceivableCount > 0) {
     alerts.push({
       level: "warning", icon: "🧾", title: `${d.finance.overdueReceivableCount} título(s) vencido(s) a receber`,
-      detail: `Clientes inadimplentes: R$ ${d.finance.overdueReceivable.toFixed(2)}`,
+      detail: `Clientes inadimplentes: ${brl(d.finance.overdueReceivable)}`,
       href: "/financeiro/receber?filtro=vencidas",
     });
   }
@@ -155,7 +157,10 @@ export async function getAlerts(companyId: string, data?: DashboardData): Promis
   if (d.pendingProduction.length) {
     alerts.push({
       level: "info", icon: "🏭", title: `${d.pendingProduction.length} produção(ões) em andamento`,
-      detail: d.pendingProduction.slice(0, 3).map((p) => `${p.product.name} ${D(p.plannedQty).toFixed(0)}`).join(", "),
+      detail: d.pendingProduction
+        .slice(0, 3)
+        .map((p) => `${p.product.name} ${num(D(p.plannedQty), 0)} ${p.product.unit.toLowerCase()}`)
+        .join(", "),
       href: "/producao",
     });
   }

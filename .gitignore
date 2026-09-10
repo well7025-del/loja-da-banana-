@@ -13,3 +13,8 @@ tsconfig.tsbuildinfo
 
 # utilitário local de sessão para testes manuais
 .devsession.ts
+
+# capturas de tela geradas nos testes
+/screenshots/
+/test-results/
+/playwright-report/

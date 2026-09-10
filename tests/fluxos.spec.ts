@@ -1,8 +1,10 @@
 /**
  * Testes de ponta a ponta pela interface, em viewport de celular.
  *
- * Exige o app rodando e o banco com o seed base aplicado:
- *   npm run build && npm start   (ou npm run dev)
+ * Exige o app rodando e o banco RECÉM-SEMEADO (a suíte cria cadastros que
+ * têm unicidade, como a ficha técnica da Banana Passa):
+ *   npm run db:push && npm run db:seed
+ *   npm run build && npm start
  *   BASE_URL=http://localhost:3000 npm run test:e2e
  *
  * Os seletores usam o atributo `name` dos campos: é o que não muda quando o
@@ -54,7 +56,7 @@ test.describe("Loja da Banana — ERP", () => {
 
   test("entra e mostra o dashboard com indicadores e atalhos", async ({ page }) => {
     await login(page);
-    await expect(page.getByText("Vendas de hoje")).toBeVisible();
+    await expect(page.getByText("Vendas hoje")).toBeVisible();
     await expect(page.getByText("Contas a receber")).toBeVisible();
     await expect(page.getByRole("link", { name: /Nova venda/ })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Navegação principal" })).toBeVisible();
