@@ -14,7 +14,7 @@ export async function createFinanceEntry(
   input: {
     direction: FinanceDirection;
     description: string;
-    amount: string | number;
+    amount: Prisma.Decimal | string | number;
     dueDate: string | Date;
     categoryId?: string | null;
     customerId?: string | null;
