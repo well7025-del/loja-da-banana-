@@ -1,0 +1,917 @@
+// =============================================================================
+// Loja da Banana - ERP
+// Banco de dados relacional (PostgreSQL) - modelagem multi-empresa / multi-estoque
+// =============================================================================
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================== ENUMS ========================================
+
+enum ProductKind {
+  FINISHED // produto acabado (fabricado)
+  RAW // matéria-prima
+  PACKAGING // embalagem / etiqueta
+  RESALE // revenda (comprado pronto)
+}
+
+enum UnitOfMeasure {
+  KG
+  G
+  L
+  ML
+  UN
+  CX
+  PCT
+  FD
+}
+
+enum MovementType {
+  IN
+  OUT
+  ADJUST
+}
+
+enum MovementReason {
+  PURCHASE // entrada por compra
+  PRODUCTION_IN // entrada de produto acabado
+  PRODUCTION_OUT // consumo de matéria-prima
+  SALE // saída por venda
+  LOSS // perda / quebra
+  ADJUSTMENT // ajuste de inventário
+  TRANSFER_IN
+  TRANSFER_OUT
+  RETURN_IN
+  RETURN_OUT
+  OPENING // saldo inicial
+}
+
+enum BatchOrigin {
+  PRODUCTION
+  PURCHASE
+  ADJUSTMENT
+}
+
+enum ProductionStatus {
+  PLANNED
+  IN_PROGRESS
+  FINISHED
+  CANCELLED
+}
+
+enum OrderStatus {
+  NEW
+  CONFIRMED
+  PICKING
+  IN_PRODUCTION
+  READY
+  DISPATCHED
+  DELIVERED
+  CANCELLED
+}
+
+enum SaleChannel {
+  RETAIL
+  WHOLESALE
+}
+
+enum SaleStatus {
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  PIX
+  CASH
+  CARD
+  TRANSFER
+  TERM // a prazo
+}
+
+enum CustomerType {
+  CONSUMER
+  STORE
+  MARKET
+  RESTAURANT
+  DISTRIBUTOR
+  REPRESENTATIVE
+  OTHER
+}
+
+enum FinanceStatus {
+  OPEN
+  PARTIAL
+  PAID
+  CANCELLED
+}
+
+enum FinanceDirection {
+  RECEIVABLE
+  PAYABLE
+}
+
+enum PurchaseStatus {
+  DRAFT
+  ORDERED
+  PARTIAL
+  RECEIVED
+  CANCELLED
+}
+
+enum PriceRuleType {
+  QTY_DISCOUNT // desconto por quantidade (kg/un) na linha
+  ORDER_VALUE // desconto pelo valor total do pedido
+  CUSTOMER_TYPE // desconto fixo por tipo de cliente
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  LOGIN_FAILED
+  CANCEL
+}
+
+// ============================== ORGANIZAÇÃO ==================================
+
+/// Empresa / unidade de negócio. Preparado para múltiplas empresas.
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  legalName String?
+  taxId     String?  @unique
+  phone     String?
+  city      String?
+  state     String?
+  address   String?
+  logoUrl   String?
+  isDefault Boolean  @default(false)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users            User[]
+  warehouses       Warehouse[]
+  products         Product[]
+  categories       Category[]
+  customers        Customer[]
+  suppliers        Supplier[]
+  recipes          Recipe[]
+  productionOrders ProductionOrder[]
+  sales            Sale[]
+  orders           Order[]
+  purchaseOrders   PurchaseOrder[]
+  financeEntries   FinanceEntry[]
+  expenses         Expense[]
+  priceRules       PriceRule[]
+  settings         Setting[]
+  movements        InventoryMovement[]
+  batches          Batch[]
+  inventory        Inventory[]
+
+  @@map("companies")
+}
+
+/// Local de estoque (fábrica, loja, CD). Permite múltiplos estoques.
+model Warehouse {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  name      String
+  code      String
+  kind      String   @default("FACTORY") // FACTORY | STORE | DC
+  isDefault Boolean  @default(false)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  inventory        Inventory[]
+  movements        InventoryMovement[]
+  batches          Batch[]
+  productionOrders ProductionOrder[]
+  sales            Sale[]
+
+  @@unique([companyId, code])
+  @@map("warehouses")
+}
+
+// ============================== USUÁRIOS =====================================
+
+/// Perfil de acesso com lista de permissões configurável.
+model Role {
+  id          String   @id @default(cuid())
+  slug        String   @unique // ADMIN, GERENTE, PRODUCAO, ESTOQUE, VENDAS, FINANCEIRO
+  name        String
+  description String?
+  permissions String[] // ex.: ["sales.create","stock.read","*"]
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users User[]
+
+  @@map("roles")
+}
+
+model User {
+  id                 String    @id @default(cuid())
+  companyId          String
+  company            Company   @relation(fields: [companyId], references: [id])
+  roleId             String
+  role               Role      @relation(fields: [roleId], references: [id])
+  name               String
+  email              String    @unique
+  passwordHash       String
+  phone              String?
+  active             Boolean   @default(true)
+  lastLoginAt        DateTime?
+  mustChangePassword Boolean   @default(false)
+  failedLogins       Int       @default(0)
+  lockedUntil        DateTime?
+  deletedAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  sessions         Session[]
+  auditLogs        AuditLog[]
+  movements        InventoryMovement[]
+  productionOrders ProductionOrder[]
+  salesAsSeller    Sale[]              @relation("SaleSeller")
+  payments         Payment[]
+
+  @@index([companyId])
+  @@map("users")
+}
+
+model Session {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  userAgent String?
+  ip        String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+// ============================== CADASTROS ====================================
+
+model Category {
+  id        String      @id @default(cuid())
+  companyId String
+  company   Company     @relation(fields: [companyId], references: [id])
+  name      String
+  kind      ProductKind @default(FINISHED)
+  deletedAt DateTime?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  products Product[]
+
+  @@unique([companyId, name, kind])
+  @@map("categories")
+}
+
+/// Item de estoque: produto acabado, matéria-prima, embalagem ou revenda.
+/// Unifica o cadastro para que estoque, movimentos e custos não sejam duplicados.
+model Product {
+  id             String        @id @default(cuid())
+  companyId      String
+  company        Company       @relation(fields: [companyId], references: [id])
+  kind           ProductKind   @default(FINISHED)
+  sku            String // código interno
+  barcode        String?
+  name           String
+  description    String?
+  categoryId     String?
+  category       Category?     @relation(fields: [categoryId], references: [id])
+  unit           UnitOfMeasure @default(KG)
+  netWeightKg    Decimal?      @db.Decimal(18, 6) // peso da embalagem em kg
+  salePrice      Decimal       @default(0) @db.Decimal(14, 2)
+  wholesalePrice Decimal       @default(0) @db.Decimal(14, 2)
+  /// Custo médio ponderado, recalculado a cada entrada.
+  avgCost        Decimal       @default(0) @db.Decimal(18, 6)
+  lastCost       Decimal       @default(0) @db.Decimal(18, 6)
+  /// Margem alvo em % usada na formação de preço.
+  targetMargin   Decimal       @default(0) @db.Decimal(9, 4)
+  minStock       Decimal       @default(0) @db.Decimal(18, 6)
+  maxStock       Decimal?      @db.Decimal(18, 6)
+  shelfLifeDays  Int? // validade em dias a partir da fabricação
+  trackBatches   Boolean       @default(true)
+  imageUrl       String?
+  active         Boolean       @default(true)
+  deletedAt      DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  rawMaterial      RawMaterial?
+  inventory        Inventory[]
+  movements        InventoryMovement[]
+  batches          Batch[]
+  recipe           Recipe?             @relation("ProductRecipe")
+  recipeItems      RecipeItem[]
+  productionOrders ProductionOrder[]
+  saleItems        SaleItem[]
+  orderItems       OrderItem[]
+  purchaseItems    PurchaseItem[]
+  priceRules       PriceRule[]
+
+  @@unique([companyId, sku])
+  @@index([companyId, kind, active])
+  @@index([companyId, barcode])
+  @@map("products")
+}
+
+/// Extensão 1:1 com dados exclusivos de matéria-prima / insumo.
+model RawMaterial {
+  id                  String        @id @default(cuid())
+  productId           String        @unique
+  product             Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  preferredSupplierId String?
+  preferredSupplier   Supplier?     @relation(fields: [preferredSupplierId], references: [id])
+  /// Unidade de compra (ex.: CX) e fator de conversão para a unidade de estoque.
+  purchaseUnit        UnitOfMeasure @default(KG)
+  purchaseFactor      Decimal       @default(1) @db.Decimal(18, 6)
+  /// Perda média histórica de limpeza/descasque (%).
+  standardLossPct     Decimal       @default(0) @db.Decimal(9, 4)
+  leadTimeDays        Int           @default(0)
+  notes               String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@map("raw_materials")
+}
+
+model Supplier {
+  id              String    @id @default(cuid())
+  companyId       String
+  company         Company   @relation(fields: [companyId], references: [id])
+  name            String
+  legalName       String?
+  taxId           String?
+  phone           String?
+  whatsapp        String?
+  contactName     String?
+  email           String?
+  city            String?
+  state           String?
+  address         String?
+  suppliedItems   String? // descrição livre dos itens fornecidos
+  avgLeadTimeDays Int       @default(0)
+  paymentTerms    String?
+  notes           String?
+  active          Boolean   @default(true)
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  purchaseOrders PurchaseOrder[]
+  rawMaterials   RawMaterial[]
+  batches        Batch[]
+  financeEntries FinanceEntry[]
+
+  @@index([companyId, active])
+  @@map("suppliers")
+}
+
+model Customer {
+  id                 String       @id @default(cuid())
+  companyId          String
+  company            Company      @relation(fields: [companyId], references: [id])
+  name               String
+  legalName          String?
+  taxId              String?
+  type               CustomerType @default(CONSUMER)
+  phone              String?
+  whatsapp           String?
+  email              String?
+  city               String?
+  state              String?
+  address            String?
+  creditLimit        Decimal      @default(0) @db.Decimal(14, 2)
+  paymentTerms       String? // ex.: "28 dias", "à vista"
+  defaultDiscountPct Decimal      @default(0) @db.Decimal(9, 4)
+  notes              String?
+  active             Boolean      @default(true)
+  deletedAt          DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  sales          Sale[]
+  orders         Order[]
+  financeEntries FinanceEntry[]
+
+  @@index([companyId, active])
+  @@map("customers")
+}
+
+// ============================== FICHA TÉCNICA ================================
+
+model Recipe {
+  id              String    @id @default(cuid())
+  companyId       String
+  company         Company   @relation(fields: [companyId], references: [id])
+  productId       String    @unique
+  product         Product   @relation("ProductRecipe", fields: [productId], references: [id], onDelete: Cascade)
+  name            String
+  /// Rendimento esperado da receita, na unidade do produto acabado.
+  yieldQty        Decimal   @default(1) @db.Decimal(18, 6)
+  /// Perda estimada do processo (%).
+  expectedLossPct Decimal   @default(0) @db.Decimal(9, 4)
+  laborCost       Decimal   @default(0) @db.Decimal(14, 2)
+  energyCost      Decimal   @default(0) @db.Decimal(14, 2)
+  otherCost       Decimal   @default(0) @db.Decimal(14, 2)
+  notes           String?
+  active          Boolean   @default(true)
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  items            RecipeItem[]
+  productionOrders ProductionOrder[]
+
+  @@map("recipes")
+}
+
+model RecipeItem {
+  id        String        @id @default(cuid())
+  recipeId  String
+  recipe    Recipe        @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  productId String // matéria-prima / embalagem
+  product   Product       @relation(fields: [productId], references: [id])
+  quantity  Decimal       @db.Decimal(18, 6)
+  unit      UnitOfMeasure
+  /// Perda específica do ingrediente (%), ex.: casca da banana.
+  lossPct   Decimal       @default(0) @db.Decimal(9, 4)
+  /// Ingrediente principal: base do cálculo de rendimento (ex.: banana).
+  isMain    Boolean       @default(false)
+  note      String?
+  sortOrder Int           @default(0)
+
+  @@unique([recipeId, productId])
+  @@map("recipe_items")
+}
+
+// ============================== PRODUÇÃO =====================================
+
+model ProductionOrder {
+  id               String           @id @default(cuid())
+  companyId        String
+  company          Company          @relation(fields: [companyId], references: [id])
+  warehouseId      String
+  warehouse        Warehouse        @relation(fields: [warehouseId], references: [id])
+  code             String // OP-AAAAMMDD-001
+  productId        String
+  product          Product          @relation(fields: [productId], references: [id])
+  recipeId         String?
+  recipe           Recipe?          @relation(fields: [recipeId], references: [id])
+  status           ProductionStatus @default(PLANNED)
+  plannedQty       Decimal          @db.Decimal(18, 6)
+  producedQty      Decimal?         @db.Decimal(18, 6)
+  lossQty          Decimal          @default(0) @db.Decimal(18, 6)
+  /// Custo total apurado (matéria-prima consumida + mão de obra + energia + outros).
+  materialCost     Decimal          @default(0) @db.Decimal(14, 2)
+  overheadCost     Decimal          @default(0) @db.Decimal(14, 2)
+  totalCost        Decimal          @default(0) @db.Decimal(14, 2)
+  unitCost         Decimal          @default(0) @db.Decimal(18, 6)
+  /// Rendimento real = produzido / entrada de matéria-prima principal.
+  expectedYieldPct Decimal?         @db.Decimal(9, 4)
+  actualYieldPct   Decimal?         @db.Decimal(9, 4)
+  inputQty         Decimal          @default(0) @db.Decimal(18, 6)
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  responsibleId    String
+  responsible      User             @relation(fields: [responsibleId], references: [id])
+  notes            String?
+  deletedAt        DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  consumptions ProductionConsumption[]
+  batches      Batch[]
+  movements    InventoryMovement[]
+
+  @@unique([companyId, code])
+  @@index([companyId, status])
+  @@map("production_orders")
+}
+
+/// Matéria-prima efetivamente consumida em uma ordem de produção.
+model ProductionConsumption {
+  id                String          @id @default(cuid())
+  productionOrderId String
+  productionOrder   ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  productId         String
+  plannedQty        Decimal         @db.Decimal(18, 6)
+  actualQty         Decimal         @db.Decimal(18, 6)
+  unitCost          Decimal         @db.Decimal(18, 6)
+  totalCost         Decimal         @db.Decimal(14, 2)
+  batchId           String?
+
+  @@index([productionOrderId])
+  @@map("production_consumptions")
+}
+
+/// Lote rastreável. Origem: produção própria, compra ou ajuste.
+/// A view SQL `production_batches` expõe apenas os lotes de produção.
+model Batch {
+  id                String           @id @default(cuid())
+  companyId         String
+  company           Company          @relation(fields: [companyId], references: [id])
+  warehouseId       String
+  warehouse         Warehouse        @relation(fields: [warehouseId], references: [id])
+  productId         String
+  product           Product          @relation(fields: [productId], references: [id])
+  code              String // LB-AAAAMMDD-001
+  origin            BatchOrigin      @default(PRODUCTION)
+  producedQty       Decimal          @db.Decimal(18, 6)
+  availableQty      Decimal          @db.Decimal(18, 6)
+  unitCost          Decimal          @default(0) @db.Decimal(18, 6)
+  manufacturedAt    DateTime
+  expiresAt         DateTime?
+  productionOrderId String?
+  productionOrder   ProductionOrder? @relation(fields: [productionOrderId], references: [id])
+  supplierId        String?
+  supplier          Supplier?        @relation(fields: [supplierId], references: [id])
+  supplierBatchCode String?
+  notes             String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  movements InventoryMovement[]
+
+  @@unique([companyId, code])
+  @@index([companyId, productId])
+  @@index([expiresAt])
+  @@map("batches")
+}
+
+// ============================== ESTOQUE ======================================
+
+/// Saldo de estoque por item + local.
+model Inventory {
+  id          String    @id @default(cuid())
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id])
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity    Decimal   @default(0) @db.Decimal(18, 6)
+  /// Reservado por pedidos confirmados ainda não entregues.
+  reserved    Decimal   @default(0) @db.Decimal(18, 6)
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([warehouseId, productId])
+  @@index([companyId])
+  @@map("inventory")
+}
+
+model InventoryMovement {
+  id                String           @id @default(cuid())
+  companyId         String
+  company           Company          @relation(fields: [companyId], references: [id])
+  warehouseId       String
+  warehouse         Warehouse        @relation(fields: [warehouseId], references: [id])
+  productId         String
+  product           Product          @relation(fields: [productId], references: [id])
+  batchId           String?
+  batch             Batch?           @relation(fields: [batchId], references: [id])
+  type              MovementType
+  reason            MovementReason
+  quantity          Decimal          @db.Decimal(18, 6) // sempre positiva
+  unitCost          Decimal          @default(0) @db.Decimal(18, 6)
+  totalCost         Decimal          @default(0) @db.Decimal(14, 2)
+  balanceAfter      Decimal          @db.Decimal(18, 6)
+  /// Referência polimórfica à origem (venda, compra, produção...).
+  refType           String?
+  refId             String?
+  productionOrderId String?
+  productionOrder   ProductionOrder? @relation(fields: [productionOrderId], references: [id])
+  note              String?
+  userId            String?
+  user              User?            @relation(fields: [userId], references: [id])
+  createdAt         DateTime         @default(now())
+
+  @@index([companyId, productId, createdAt])
+  @@index([refType, refId])
+  @@map("inventory_movements")
+}
+
+// ============================== VENDAS =======================================
+
+model Sale {
+  id            String        @id @default(cuid())
+  companyId     String
+  company       Company       @relation(fields: [companyId], references: [id])
+  warehouseId   String
+  warehouse     Warehouse     @relation(fields: [warehouseId], references: [id])
+  number        String // VD-AAAAMMDD-001
+  customerId    String?
+  customer      Customer?     @relation(fields: [customerId], references: [id])
+  sellerId      String?
+  seller        User?         @relation("SaleSeller", fields: [sellerId], references: [id])
+  channel       SaleChannel   @default(RETAIL)
+  status        SaleStatus    @default(COMPLETED)
+  subtotal      Decimal       @default(0) @db.Decimal(14, 2)
+  discount      Decimal       @default(0) @db.Decimal(14, 2)
+  freight       Decimal       @default(0) @db.Decimal(14, 2)
+  total         Decimal       @default(0) @db.Decimal(14, 2)
+  costTotal     Decimal       @default(0) @db.Decimal(14, 2)
+  grossProfit   Decimal       @default(0) @db.Decimal(14, 2)
+  marginPct     Decimal       @default(0) @db.Decimal(9, 4)
+  paymentMethod PaymentMethod @default(PIX)
+  installments  Int           @default(1)
+  dueDate       DateTime?
+  soldAt        DateTime      @default(now())
+  orderId       String?       @unique
+  order         Order?        @relation(fields: [orderId], references: [id])
+  notes         String?
+  cancelledAt   DateTime?
+  cancelReason  String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  items          SaleItem[]
+  financeEntries FinanceEntry[]
+
+  @@unique([companyId, number])
+  @@index([companyId, soldAt])
+  @@map("sales")
+}
+
+model SaleItem {
+  id          String  @id @default(cuid())
+  saleId      String
+  sale        Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product @relation(fields: [productId], references: [id])
+  batchId     String?
+  quantity    Decimal @db.Decimal(18, 6)
+  unitPrice   Decimal @db.Decimal(14, 2)
+  discountPct Decimal @default(0) @db.Decimal(9, 4)
+  discount    Decimal @default(0) @db.Decimal(14, 2)
+  total       Decimal @db.Decimal(14, 2)
+  unitCost    Decimal @default(0) @db.Decimal(18, 6)
+  totalCost   Decimal @default(0) @db.Decimal(14, 2)
+
+  @@index([saleId])
+  @@map("sale_items")
+}
+
+// ============================== PEDIDOS ======================================
+
+model Order {
+  id              String        @id @default(cuid())
+  companyId       String
+  company         Company       @relation(fields: [companyId], references: [id])
+  number          String // PD-AAAAMMDD-001
+  customerId      String
+  customer        Customer      @relation(fields: [customerId], references: [id])
+  status          OrderStatus   @default(NEW)
+  channel         SaleChannel   @default(WHOLESALE)
+  subtotal        Decimal       @default(0) @db.Decimal(14, 2)
+  discount        Decimal       @default(0) @db.Decimal(14, 2)
+  freight         Decimal       @default(0) @db.Decimal(14, 2)
+  total           Decimal       @default(0) @db.Decimal(14, 2)
+  paymentMethod   PaymentMethod @default(PIX)
+  deliveryDate    DateTime?
+  deliveryAddress String?
+  notes           String?
+  reserved        Boolean       @default(false)
+  deletedAt       DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  items OrderItem[]
+  sale  Sale?
+
+  @@unique([companyId, number])
+  @@index([companyId, status])
+  @@map("orders")
+}
+
+model OrderItem {
+  id          String  @id @default(cuid())
+  orderId     String
+  order       Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product @relation(fields: [productId], references: [id])
+  quantity    Decimal @db.Decimal(18, 6)
+  unitPrice   Decimal @db.Decimal(14, 2)
+  discountPct Decimal @default(0) @db.Decimal(9, 4)
+  discount    Decimal @default(0) @db.Decimal(14, 2)
+  total       Decimal @db.Decimal(14, 2)
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+// ============================== COMPRAS ======================================
+
+model PurchaseOrder {
+  id           String         @id @default(cuid())
+  companyId    String
+  company      Company        @relation(fields: [companyId], references: [id])
+  number       String // CP-AAAAMMDD-001
+  supplierId   String
+  supplier     Supplier       @relation(fields: [supplierId], references: [id])
+  status       PurchaseStatus @default(DRAFT)
+  subtotal     Decimal        @default(0) @db.Decimal(14, 2)
+  freight      Decimal        @default(0) @db.Decimal(14, 2)
+  discount     Decimal        @default(0) @db.Decimal(14, 2)
+  total        Decimal        @default(0) @db.Decimal(14, 2)
+  paymentTerms String?
+  dueDate      DateTime?
+  orderedAt    DateTime       @default(now())
+  receivedAt   DateTime?
+  notes        String?
+  deletedAt    DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  items          PurchaseItem[]
+  financeEntries FinanceEntry[]
+
+  @@unique([companyId, number])
+  @@index([companyId, status])
+  @@map("purchase_orders")
+}
+
+model PurchaseItem {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product       @relation(fields: [productId], references: [id])
+  quantity        Decimal       @db.Decimal(18, 6)
+  receivedQty     Decimal       @default(0) @db.Decimal(18, 6)
+  unitPrice       Decimal       @db.Decimal(18, 6)
+  total           Decimal       @db.Decimal(14, 2)
+  batchCode       String?
+  expiresAt       DateTime?
+
+  @@index([purchaseOrderId])
+  @@map("purchase_items")
+}
+
+// ============================== FINANCEIRO ===================================
+
+model FinanceCategory {
+  id        String           @id @default(cuid())
+  name      String           @unique
+  direction FinanceDirection
+  isSystem  Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  entries  FinanceEntry[]
+  expenses Expense[]
+
+  @@map("finance_categories")
+}
+
+/// Conta a pagar ou a receber. As views SQL `accounts_payable` e
+/// `accounts_receivable` expõem cada direção separadamente.
+model FinanceEntry {
+  id              String           @id @default(cuid())
+  companyId       String
+  company         Company          @relation(fields: [companyId], references: [id])
+  direction       FinanceDirection
+  status          FinanceStatus    @default(OPEN)
+  description     String
+  categoryId      String?
+  category        FinanceCategory? @relation(fields: [categoryId], references: [id])
+  customerId      String?
+  customer        Customer?        @relation(fields: [customerId], references: [id])
+  supplierId      String?
+  supplier        Supplier?        @relation(fields: [supplierId], references: [id])
+  saleId          String?
+  sale            Sale?            @relation(fields: [saleId], references: [id])
+  purchaseOrderId String?
+  purchaseOrder   PurchaseOrder?   @relation(fields: [purchaseOrderId], references: [id])
+  amount          Decimal          @db.Decimal(14, 2)
+  paidAmount      Decimal          @default(0) @db.Decimal(14, 2)
+  dueDate         DateTime
+  issuedAt        DateTime         @default(now())
+  paidAt          DateTime?
+  installment     Int              @default(1)
+  installments    Int              @default(1)
+  notes           String?
+  deletedAt       DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  payments Payment[]
+
+  @@index([companyId, direction, status, dueDate])
+  @@map("finance_entries")
+}
+
+model Payment {
+  id             String        @id @default(cuid())
+  financeEntryId String
+  financeEntry   FinanceEntry  @relation(fields: [financeEntryId], references: [id], onDelete: Cascade)
+  amount         Decimal       @db.Decimal(14, 2)
+  method         PaymentMethod @default(PIX)
+  paidAt         DateTime      @default(now())
+  userId         String?
+  user           User?         @relation(fields: [userId], references: [id])
+  note           String?
+  createdAt      DateTime      @default(now())
+
+  @@index([financeEntryId])
+  @@map("payments")
+}
+
+/// Despesa lançada diretamente (sem pedido de compra).
+model Expense {
+  id              String           @id @default(cuid())
+  companyId       String
+  company         Company          @relation(fields: [companyId], references: [id])
+  categoryId      String?
+  category        FinanceCategory? @relation(fields: [categoryId], references: [id])
+  description     String
+  amount          Decimal          @db.Decimal(14, 2)
+  incurredAt      DateTime         @default(now())
+  recurring       Boolean          @default(false)
+  /// Rateio no custo do produto: despesa fixa mensal usada na formação de preço.
+  isFixedOverhead Boolean          @default(false)
+  notes           String?
+  deletedAt       DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([companyId, incurredAt])
+  @@map("expenses")
+}
+
+// ============================== REGRAS DE PREÇO ==============================
+
+/// Política de desconto configurável pelo administrador (nada fixo no código).
+model PriceRule {
+  id           String        @id @default(cuid())
+  companyId    String
+  company      Company       @relation(fields: [companyId], references: [id])
+  name         String
+  type         PriceRuleType @default(QTY_DISCOUNT)
+  /// Quantidade/valor mínimo para a faixa.
+  minQty       Decimal       @default(0) @db.Decimal(18, 6)
+  minValue     Decimal       @default(0) @db.Decimal(14, 2)
+  discountPct  Decimal       @default(0) @db.Decimal(9, 4)
+  customerType CustomerType?
+  productId    String?
+  product      Product?      @relation(fields: [productId], references: [id])
+  channel      SaleChannel?
+  priority     Int           @default(0)
+  active       Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([companyId, active])
+  @@map("price_rules")
+}
+
+// ============================== SISTEMA ======================================
+
+model Setting {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  key       String
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, key])
+  @@map("settings")
+}
+
+model AuditLog {
+  id        String      @id @default(cuid())
+  companyId String?
+  userId    String?
+  user      User?       @relation(fields: [userId], references: [id])
+  userName  String?
+  action    AuditAction
+  entity    String
+  entityId  String?
+  summary   String?
+  before    Json?
+  after     Json?
+  ip        String?
+  createdAt DateTime    @default(now())
+
+  @@index([companyId, entity, createdAt])
+  @@index([userId, createdAt])
+  @@map("audit_logs")
+}
