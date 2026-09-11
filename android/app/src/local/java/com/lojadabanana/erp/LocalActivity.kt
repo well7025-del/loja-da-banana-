@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
@@ -122,6 +123,19 @@ class LocalActivity : AppCompatActivity() {
                     true
                 }.getOrDefault(false)
             }
+
+            override fun onReceivedError(
+                view: WebView,
+                request: WebResourceRequest,
+                error: WebResourceError,
+            ) {
+                // Só a página principal: um ícone que falta não vira tela de erro.
+                if (!request.isForMainFrame) return
+                mostrarFalha(
+                    "Não foi possível abrir a tela do sistema.",
+                    "${error.description} (código ${error.errorCode})",
+                )
+            }
         }
 
         web.webChromeClient = object : WebChromeClient() {
@@ -143,6 +157,18 @@ class LocalActivity : AppCompatActivity() {
         }
 
         web.addJavascriptInterface(PonteBackup(), "AndroidBackup")
+
+        // Se o APK foi montado sem a interface, a tela ficaria branca para sempre
+        // e pareceria que o aplicativo não abre. Melhor dizer o que aconteceu.
+        if (!interfaceEmbutida()) {
+            mostrarFalha(
+                "Este instalador veio incompleto.",
+                "A interface do sistema não está dentro do aplicativo. " +
+                    "Gere o APK novamente pelo GitHub Actions e instale o arquivo " +
+                    "cujo nome contém LOCAL.",
+            )
+            return
+        }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -207,6 +233,37 @@ class LocalActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun versaoApp(): String = BuildConfig.VERSION_NAME
+
+        @JavascriptInterface
+        fun recarregar() = runOnUiThread { web.loadUrl("$BASE/index.html") }
+    }
+
+    /** Página legível no lugar da tela branca, com o motivo da falha. */
+    private fun mostrarFalha(titulo: String, detalhe: String) {
+        val html = """
+            <!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+            <meta name="viewport" content="width=device-width,initial-scale=1">
+            <style>
+              body{margin:0;padding:32px 24px;font:16px/1.5 system-ui,sans-serif;
+                   color:#1c1917;background:#faf9f7}
+              h1{font-size:20px;margin:0 0 12px}
+              p{margin:0 0 20px;color:#57534e}
+              code{display:block;background:#f0eeea;padding:12px;border-radius:8px;
+                   font-size:13px;color:#44403c;word-break:break-word}
+              button{margin-top:24px;width:100%;padding:14px;border:0;border-radius:10px;
+                     background:#15803d;color:#fff;font-size:16px;font-weight:600}
+            </style></head><body>
+              <h1>TITULO</h1>
+              <p>DETALHE</p>
+              <code>Versão VERSAO</code>
+              <button onclick="AndroidBackup.recarregar()">Tentar de novo</button>
+            </body></html>
+        """.trimIndent()
+            .replace("TITULO", titulo.escaparHtml())
+            .replace("DETALHE", detalhe.escaparHtml())
+            .replace("VERSAO", BuildConfig.VERSION_NAME.escaparHtml())
+
+        web.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
     }
 
     private fun responderSalvamento(ok: Boolean, mensagem: String) = runOnUiThread {
@@ -231,6 +288,14 @@ class LocalActivity : AppCompatActivity() {
         private const val BASE = "https://appassets.androidplatform.net"
     }
 }
+
+/** Conferir se o APK traz a interface embutida. */
+private fun LocalActivity.interfaceEmbutida(): Boolean =
+    runCatching { assets.list("")?.contains("index.html") == true }.getOrDefault(false)
+
+/** Texto seguro para ir dentro de uma página HTML. */
+private fun String.escaparHtml(): String = this
+    .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 /** Texto pronto para ser embutido em JavaScript, sem quebrar com aspas. */
 private fun String.comoLiteralJs(): String {

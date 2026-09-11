@@ -15,7 +15,7 @@ on:
         required: false
         default: '1.1.0'
       modo:
-        description: 'Qual aplicativo gerar'
+        description: 'Qual aplicativo gerar (na dúvida, deixe "ambos")'
         required: false
         default: 'ambos'
         type: choice
@@ -60,9 +60,13 @@ jobs:
 
       - name: Embutir a interface no aplicativo
         run: |
+          test -f offline/dist/index.html \
+            || { echo "::error::offline/dist/index.html não existe; a interface não foi compilada."; exit 1; }
           rm -rf android/app/src/local/assets
           mkdir -p android/app/src/local/assets
           cp -r offline/dist/. android/app/src/local/assets/
+          test -f android/app/src/local/assets/index.html \
+            || { echo "::error::a interface não chegou em src/local/assets."; exit 1; }
           echo "Arquivos embutidos:"
           find android/app/src/local/assets -type f | head -20
 
@@ -130,10 +134,82 @@ jobs:
           done
           ls -la entrega/
 
+      # Sem isto não há como saber, olhando o artefato, qual APK é qual — foi
+      # exatamente essa dúvida que levou a instalar o aplicativo errado.
+      - name: Conferir a identidade de cada instalador
+        run: |
+          AAPT="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)aapt2"
+          FALHOU=0
+
+          conferir() {
+            ARQ="$1"; ATIVIDADE_ESPERADA="$2"; PRECISA_INTERFACE="$3"
+            [ -f "$ARQ" ] || return 0
+
+            echo "::group::$(basename "$ARQ")"
+            "$AAPT" dump badging "$ARQ" \
+              | grep -E "^(package|application-label|launchable-activity)" || true
+
+            ATIVIDADE=$("$AAPT" dump badging "$ARQ" \
+              | sed -n "s/^launchable-activity: name='\([^']*\)'.*/\1/p")
+            echo "tela inicial: $ATIVIDADE"
+
+            if [ "$ATIVIDADE" != "$ATIVIDADE_ESPERADA" ]; then
+              echo "::error::$(basename "$ARQ") abre em $ATIVIDADE, esperado $ATIVIDADE_ESPERADA"
+              FALHOU=1
+            fi
+
+            if [ "$PRECISA_INTERFACE" = "sim" ]; then
+              if unzip -l "$ARQ" | grep -q " assets/index.html$"; then
+                echo "interface embutida: sim"
+              else
+                echo "::error::$(basename "$ARQ") não traz a interface embutida"
+                FALHOU=1
+              fi
+            fi
+            echo "::endgroup::"
+          }
+
+          conferir entrega/loja-da-banana-LOCAL-*.apk com.lojadabanana.erp.LocalActivity sim
+          conferir entrega/loja-da-banana-REDE-*.apk  com.lojadabanana.erp.SetupActivity nao
+
+          exit $FALHOU
+
+      - name: Escrever as instruções junto dos instaladores
+        run: |
+          cat > entrega/LEIA-ME.txt <<'TXT'
+          LOJA DA BANANA — qual arquivo instalar
+          =======================================
+
+          loja-da-banana-LOCAL-*.apk   ← É ESTE, para usar em um celular só.
+              Nome no celular: "Loja da Banana"
+              Funciona sem internet e sem servidor. Todos os dados ficam no
+              aparelho. O backup fica em ☰ Mais → Backup.
+
+          loja-da-banana-REDE-*.apk
+              Nome no celular: "Loja da Banana (rede)"
+              Só serve se você tiver o ERP rodando num servidor. Ao abrir, ele
+              pede o "Endereço do servidor".
+
+          COMO SABER SE INSTALOU O CERTO
+          -------------------------------
+          Se ao abrir aparecer a tela "Conectar ao sistema" pedindo um endereço,
+          você está no aplicativo de REDE. O aplicativo LOCAL nunca pede endereço:
+          ele abre direto no painel.
+
+          ANTES DE INSTALAR
+          ------------------
+          Desinstale qualquer "Loja da Banana" que já esteja no celular. As
+          versões antigas têm o mesmo nome e o mesmo ícone, e é fácil abrir a
+          errada sem perceber.
+          TXT
+          ls -la entrega/
+
       - name: Publicar os instaladores
         uses: actions/upload-artifact@v4
         with:
           name: loja-da-banana-apk
-          path: entrega/*.apk
+          path: |
+            entrega/*.apk
+            entrega/LEIA-ME.txt
           retention-days: 90
           if-no-files-found: error

@@ -21,9 +21,30 @@ computador ligado nem de internet. Os dados ficam no próprio aparelho.
    escolha `local`).
 2. Baixe em **Artifacts → loja-da-banana-apk**. Dentro do `.zip` está o
    `loja-da-banana-LOCAL-1.1.0.apk`.
-3. Envie para o celular e toque no arquivo. O Android vai avisar que o app não
+3. **Antes de instalar, desinstale qualquer "Loja da Banana" que já esteja no
+   celular.** As versões anteriores têm o mesmo nome e o mesmo ícone: com as
+   duas instaladas é fácil abrir a errada sem perceber.
+4. Envie para o celular e toque no arquivo. O Android vai avisar que o app não
    veio da Play Store — autorize "Instalar apps desconhecidos" para o
    aplicativo que abriu o arquivo.
+
+### Instalei e abriu uma tela pedindo "Endereço do servidor"
+
+Então o que está aberto é o aplicativo **de rede**, não o local. O aplicativo
+local nunca pede endereço nenhum: ele abre direto no painel.
+
+Como acontece: os dois aplicativos usam o mesmo ícone, e as versões geradas
+antes da separação também se chamavam só "Loja da Banana". O que resolve:
+
+1. Desinstale **todos** os "Loja da Banana" do celular.
+2. Instale apenas o arquivo cujo nome contém **LOCAL**.
+3. Confirme em *Configurações → Aplicativos*: o local aparece como
+   `com.lojadabanana.erp.local` (ou `...local.debug`, se o APK não foi
+   assinado com chave própria).
+
+Cada execução do workflow imprime, no passo **"Conferir a identidade de cada
+instalador"**, o pacote, o nome e a tela inicial de cada APK gerado — e falha
+de propósito se um deles sair trocado ou sem a interface embutida.
 
 Ao abrir pela primeira vez, o app já vem com o catálogo de produtos e insumos
 da empresa e com as faixas de desconto do atacado. **Preços, custos e estoques
