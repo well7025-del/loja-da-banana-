@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #F7F8F5;
+  --surface: #FFFFFF;
+  --border: #E6E8E1;
+  --text: #17211B;
+  --muted: #6B7A70;
+  --brand: #F2B705;
+  --brand-dark: #C98A02;
+  --leaf: #1F7A4C;
+  --danger: #C0392B;
+  color-scheme: light;
+}
+
+* { -webkit-tap-highlight-color: transparent; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  overscroll-behavior-y: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Área segura para o menu inferior em celulares com notch */
+.pb-safe { padding-bottom: calc(5.25rem + env(safe-area-inset-bottom)); }
+.bottom-safe { padding-bottom: env(safe-area-inset-bottom); }
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-[var(--border)] bg-white shadow-card;
+  }
+  .card-pad { @apply p-4; }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 font-semibold
+           transition active:scale-[.98] disabled:pointer-events-none disabled:opacity-50;
+    min-height: 3rem;
+  }
+  .btn-primary { @apply btn bg-[var(--leaf)] text-white hover:bg-[#186139]; }
+  .btn-banana  { @apply btn bg-[var(--brand)] text-[#3A2C00] hover:bg-[#e0aa05]; }
+  .btn-ghost   { @apply btn border border-[var(--border)] bg-white text-ink-700 hover:bg-ink-50; }
+  .btn-danger  { @apply btn bg-[var(--danger)] text-white hover:bg-[#a33024]; }
+  .btn-sm      { @apply px-3 text-sm; min-height: 2.25rem; }
+
+  .field { @apply block w-full; }
+  .label { @apply mb-1.5 block text-sm font-semibold text-ink-700; }
+  .input {
+    @apply w-full rounded-xl border border-[var(--border)] bg-white px-3.5 text-base text-ink-900
+           outline-none transition placeholder:text-ink-400
+           focus:border-leaf-600 focus:ring-2 focus:ring-leaf-600/20;
+    min-height: 3rem;
+  }
+  textarea.input { @apply py-3; min-height: 5rem; }
+  select.input {
+    @apply appearance-none bg-no-repeat pr-10;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B7A70' stroke-width='2'%3e%3cpath d='m6 9 6 6 6-6'/%3e%3c/svg%3e");
+    background-size: 1.15rem;
+    background-position: right 0.9rem center;
+  }
+  .hint { @apply mt-1 text-xs text-ink-500; }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold;
+  }
+
+  .tabbar-link {
+    @apply flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[0.68rem] font-semibold
+           text-ink-400 transition;
+  }
+  .tabbar-link[data-active="true"] { @apply text-[var(--leaf)]; }
+
+  .row {
+    @apply flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3.5 last:border-0;
+  }
+
+  .table-wrap { @apply -mx-4 overflow-x-auto px-4; }
+  table.data { @apply w-full min-w-full border-collapse text-sm; }
+  table.data th {
+    @apply whitespace-nowrap border-b border-[var(--border)] px-3 py-2.5 text-left text-xs
+           font-bold uppercase tracking-wide text-ink-500;
+  }
+  table.data td { @apply whitespace-nowrap border-b border-[var(--border)] px-3 py-3 text-ink-800; }
+  table.data tbody tr:last-child td { @apply border-0; }
+  .num { @apply text-right tabular-nums; }
+}
+
+/* Barra de rolagem discreta no desktop */
+@media (min-width: 768px) {
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #D5DAD2; border-radius: 8px; }
+}
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff; }
+}

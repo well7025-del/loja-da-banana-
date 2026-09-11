@@ -3,6 +3,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Gera um pacote autocontido, usado pela imagem Docker do servidor.
   output: "standalone",
+  // A pasta offline/ é um projeto Vite independente, fora do build do Next.
+  outputFileTracingExcludes: { "*": ["./offline/**", "./android/**"] },
   serverExternalPackages: ["@prisma/client", "bcryptjs"],
   experimental: { serverActions: { bodySizeLimit: "8mb" } },
   async headers() {

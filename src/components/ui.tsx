@@ -78,23 +78,8 @@ export function StatCard({
   return href ? <Link href={href} className="block active:scale-[.99]">{body}</Link> : body;
 }
 
-export function Field({
-  label, hint, error, children, required,
-}: { label?: string; hint?: string; error?: string; children: ReactNode; required?: boolean }) {
-  return (
-    <label className="field">
-      {label && (
-        <span className="label">
-          {label}
-          {required && <span className="text-red-500" aria-hidden> *</span>}
-        </span>
-      )}
-      {children}
-      {hint && !error && <span className="hint">{hint}</span>}
-      {error && <span className="mt-1 block text-xs font-semibold text-red-600">{error}</span>}
-    </label>
-  );
-}
+/** Reexportado de field.tsx: usa hook e precisa ser componente de cliente. */
+export { Field } from "./field";
 
 export function FormMessage({ error, success }: { error?: string | null; success?: string | null }) {
   if (!error && !success) return null;

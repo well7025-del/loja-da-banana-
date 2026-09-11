@@ -1,18 +1,28 @@
 name: Gerar APK do aplicativo
 
-# Gera o instalador Android do ERP.
-# Rode manualmente em: Actions → "Gerar APK do aplicativo" → "Run workflow".
-# O arquivo .apk fica disponível para download ao final, em "Artifacts".
+# Gera os instaladores Android do ERP.
+# Rode em: Actions → "Gerar APK do aplicativo" → "Run workflow".
+# Ao final, baixe os arquivos em "Artifacts".
+#
+# São dois aplicativos, que podem conviver no mesmo celular:
+#   • Loja da Banana          → tudo dentro do aparelho, sem servidor (modo local)
+#   • Loja da Banana (rede)   → interface para o ERP rodando em um servidor
 on:
   workflow_dispatch:
     inputs:
       versao:
         description: 'Nome da versão (ex.: 1.0.0)'
         required: false
-        default: '1.0.0'
+        default: '1.1.0'
+      modo:
+        description: 'Qual aplicativo gerar'
+        required: false
+        default: 'ambos'
+        type: choice
+        options: [ambos, local, rede]
   push:
     branches: [main]
-    paths: ['android/**', '.github/workflows/apk.yml']
+    paths: ['android/**', 'offline/**', '.github/workflows/apk.yml']
 
 permissions:
   contents: read
@@ -23,6 +33,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
 
       - name: Preparar Java 17
         uses: actions/setup-java@v4
@@ -35,6 +50,21 @@ jobs:
 
       - name: Preparar Gradle
         uses: gradle/actions/setup-gradle@v4
+
+      # A interface do modo local é um app web que vai embutido no APK.
+      - name: Compilar a interface do modo local
+        working-directory: offline
+        run: |
+          npm ci
+          npm run build
+
+      - name: Embutir a interface no aplicativo
+        run: |
+          rm -rf android/app/src/local/assets
+          mkdir -p android/app/src/local/assets
+          cp -r offline/dist/. android/app/src/local/assets/
+          echo "Arquivos embutidos:"
+          find android/app/src/local/assets -type f | head -20
 
       - name: Ajustar o nome da versão
         if: ${{ github.event.inputs.versao != '' }}
@@ -51,40 +81,56 @@ jobs:
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/loja-da-banana.jks"
             echo "assinado=sim" >> "$GITHUB_OUTPUT"
-            echo "Chave própria encontrada: o APK será assinado com ela."
+            echo "Chave própria encontrada: os APKs serão assinados com ela."
           else
             echo "assinado=nao" >> "$GITHUB_OUTPUT"
-            echo "Sem a chave KEYSTORE_BASE64: será gerado um APK de teste (debug)."
+            echo "Sem a chave KEYSTORE_BASE64: serão gerados APKs de teste (debug)."
           fi
 
-      # Com chave própria: APK de release, que permite atualizar por cima.
-      - name: Compilar APK assinado
-        if: steps.keystore.outputs.assinado == 'sim'
+      - name: Descobrir o que compilar
+        id: alvos
+        run: |
+          MODO="${{ github.event.inputs.modo }}"
+          [ -z "$MODO" ] && MODO="ambos"
+          TAREFAS=""
+          case "$MODO" in
+            local) TAREFAS="Local" ;;
+            rede)  TAREFAS="Servidor" ;;
+            *)     TAREFAS="Local Servidor" ;;
+          esac
+          echo "sabores=$TAREFAS" >> "$GITHUB_OUTPUT"
+          echo "Vai compilar: $TAREFAS"
+
+      - name: Compilar
         working-directory: android
         env:
-          KEYSTORE_PATH: ${{ runner.temp }}/loja-da-banana.jks
+          KEYSTORE_PATH: ${{ steps.keystore.outputs.assinado == 'sim' && format('{0}/loja-da-banana.jks', runner.temp) || '' }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew --no-daemon assembleRelease
+        run: |
+          TIPO=$([ "${{ steps.keystore.outputs.assinado }}" = "sim" ] && echo Release || echo Debug)
+          for SABOR in ${{ steps.alvos.outputs.sabores }}; do
+            echo "::group::assemble${SABOR}${TIPO}"
+            ./gradlew --no-daemon "assemble${SABOR}${TIPO}"
+            echo "::endgroup::"
+          done
 
-      # Sem chave: APK de teste, instalável do mesmo jeito.
-      - name: Compilar APK de teste
-        if: steps.keystore.outputs.assinado == 'nao'
-        working-directory: android
-        run: ./gradlew --no-daemon assembleDebug
-
-      - name: Localizar o APK
+      - name: Organizar os instaladores
         id: apk
         run: |
-          CAMINHO=$(find android/app/build/outputs/apk -name "*.apk" | head -1)
-          echo "Arquivo gerado: $CAMINHO"
-          echo "caminho=$CAMINHO" >> "$GITHUB_OUTPUT"
+          VERSAO="${{ github.event.inputs.versao }}"
+          [ -z "$VERSAO" ] && VERSAO="1.1.0"
           mkdir -p entrega
-          cp "$CAMINHO" "entrega/loja-da-banana-${{ github.event.inputs.versao || '1.0.0' }}.apk"
+          find android/app/build/outputs/apk -name "*.apk" | while read -r ARQ; do
+            case "$ARQ" in
+              *local*)    cp "$ARQ" "entrega/loja-da-banana-LOCAL-$VERSAO.apk" ;;
+              *servidor*) cp "$ARQ" "entrega/loja-da-banana-REDE-$VERSAO.apk" ;;
+            esac
+          done
           ls -la entrega/
 
-      - name: Publicar o instalador
+      - name: Publicar os instaladores
         uses: actions/upload-artifact@v4
         with:
           name: loja-da-banana-apk

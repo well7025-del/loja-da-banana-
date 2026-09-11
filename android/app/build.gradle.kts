@@ -53,6 +53,31 @@ android {
 
     buildFeatures {
         viewBinding = true
+        buildConfig = true
+    }
+
+    // Dois aplicativos a partir da mesma base:
+    //   servidor — interface para o ERP rodando em um servidor
+    //   local    — o ERP inteiro dentro do aparelho, sem servidor
+    flavorDimensions += "modo"
+    productFlavors {
+        create("servidor") {
+            dimension = "modo"
+            resValue("string", "app_name", "Loja da Banana (rede)")
+        }
+        create("local") {
+            dimension = "modo"
+            applicationIdSuffix = ".local"
+            versionNameSuffix = "-local"
+            resValue("string", "app_name", "Loja da Banana")
+        }
+    }
+
+    // A interface do modo local é gerada pelo projeto Vite em ../offline
+    sourceSets {
+        getByName("local") {
+            assets.srcDirs("src/local/assets")
+        }
     }
 }
 
@@ -63,4 +88,5 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.webkit:webkit:1.12.1")
 }

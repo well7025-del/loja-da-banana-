@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  O que entra na cópia automática do Android (Android 11 e anteriores).
+  O banco do ERP vive no armazenamento do WebView, dentro de app_webview.
+-->
+<full-backup-content>
+    <include domain="file" path="." />
+    <include domain="database" path="." />
+    <include domain="sharedpref" path="." />
+    <exclude domain="file" path="cache" />
+    <exclude domain="external" path="backups-temporarios" />
+</full-backup-content>
