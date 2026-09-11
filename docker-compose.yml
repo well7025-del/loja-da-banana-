@@ -1,0 +1,43 @@
+# Sobe o ERP completo (banco + sistema) em um computador da empresa.
+#
+#   1. Instale o Docker Desktop
+#   2. Copie .env.example para .env e defina uma AUTH_SECRET forte
+#   3. docker compose up -d
+#   4. Descubra o IP do computador na rede e use no aplicativo do celular
+#
+services:
+  banco:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-troque-esta-senha}
+      POSTGRES_DB: ${POSTGRES_DB:-loja_da_banana}
+    volumes:
+      - dados-do-banco:/var/lib/postgresql/data
+      # Backups gerados por `npm run db:backup` ficam visíveis aqui
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  erp:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      banco:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-troque-esta-senha}@banco:5432/${POSTGRES_DB:-loja_da_banana}?schema=public
+      AUTH_SECRET: ${AUTH_SECRET:?defina AUTH_SECRET no arquivo .env}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-12}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@lojadabanana.com.br}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-LojaDaBanana@2026}
+    ports:
+      # 0.0.0.0 para que os celulares da rede alcancem o sistema
+      - "3000:3000"
+
+volumes:
+  dados-do-banco:

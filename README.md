@@ -160,3 +160,5 @@ auditoria automática e backup por comando. Detalhes em
 - [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md) — arquitetura, modelo de dados,
   fluxos dos processos e plano de desenvolvimento.
 - [`docs/MANUAL.md`](docs/MANUAL.md) — manual de uso para a equipe.
+- [`docs/INSTALACAO.md`](docs/INSTALACAO.md) — instalar o servidor e o
+  aplicativo no celular, gerar e assinar o APK.

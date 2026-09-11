@@ -1,0 +1,10 @@
+node_modules
+.next
+.git
+android
+screenshots
+test-results
+playwright-report
+backups
+*.log
+.env

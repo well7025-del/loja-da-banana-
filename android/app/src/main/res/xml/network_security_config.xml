@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Permite HTTP sem criptografia porque o uso mais comum é o servidor rodando
+  em um computador da própria empresa, na rede local (ex.: http://192.168.0.10:3000).
+  Quando o ERP estiver publicado em um domínio, use HTTPS: aí o tráfego já é
+  criptografado e esta permissão deixa de ser usada.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

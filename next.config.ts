@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Gera um pacote autocontido, usado pela imagem Docker do servidor.
+  output: "standalone",
   serverExternalPackages: ["@prisma/client", "bcryptjs"],
   experimental: { serverActions: { bodySizeLimit: "8mb" } },
   async headers() {

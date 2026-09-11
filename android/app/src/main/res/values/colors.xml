@@ -1,0 +1,11 @@
+<resources>
+    <color name="banana">#F2B705</color>
+    <color name="banana_dark">#C98A02</color>
+    <color name="leaf">#1F7A4C</color>
+    <color name="ink">#17211B</color>
+    <color name="muted">#6B7A70</color>
+    <color name="bg">#F7F8F5</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="border">#E6E8E1</color>
+    <color name="danger">#C0392B</color>
+</resources>
