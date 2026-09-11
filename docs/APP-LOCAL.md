@@ -46,6 +46,15 @@ Cada execução do workflow imprime, no passo **"Conferir a identidade de cada
 instalador"**, o pacote, o nome e a tela inicial de cada APK gerado — e falha
 de propósito se um deles sair trocado ou sem a interface embutida.
 
+### "App não instalado" ao atualizar
+
+Enquanto não houver chave de assinatura própria configurada (`KEYSTORE_BASE64`
+nos segredos do repositório — ver `docs/INSTALACAO.md`), cada compilação sai
+com uma assinatura diferente, e o Android recusa instalar por cima. Para
+atualizar: **faça o backup, desinstale, instale o novo APK e restaure**. Com a
+chave própria configurada, a atualização passa a funcionar por cima, sem
+desinstalar e sem perder nada.
+
 Ao abrir pela primeira vez, o app já vem com o catálogo de produtos e insumos
 da empresa e com as faixas de desconto do atacado. **Preços, custos e estoques
 nascem zerados** — nada é inventado; preencha com os números reais.
