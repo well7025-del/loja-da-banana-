@@ -162,3 +162,5 @@ auditoria automática e backup por comando. Detalhes em
 - [`docs/MANUAL.md`](docs/MANUAL.md) — manual de uso para a equipe.
 - [`docs/INSTALACAO.md`](docs/INSTALACAO.md) — instalar o servidor e o
   aplicativo no celular, gerar e assinar o APK.
+- [`docs/APP-LOCAL.md`](docs/APP-LOCAL.md) — a versão que roda dentro de um
+  único celular, sem servidor, e como funciona o backup no Google Drive.
