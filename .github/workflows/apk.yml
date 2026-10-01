@@ -45,8 +45,13 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # O pacote "tools" saiu do repositório do Google e a ação tenta instalá-lo
+      # por padrão, derrubando o build. A imagem do runner já traz o SDK; aqui
+      # basta o platform-tools, e o Gradle baixa o que faltar.
       - name: Preparar Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
 
       - name: Preparar Gradle
         uses: gradle/actions/setup-gradle@v4
