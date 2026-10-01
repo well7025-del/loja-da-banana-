@@ -7,6 +7,26 @@
   reinstalar o app ou configurar um celular novo.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      A partir do Android 11 um aplicativo só enxerga os outros que declara.
+      Sem isto, resolveActivity() não encontra a câmera e o botão "Tirar foto"
+      simplesmente não apareceria no seletor de arquivos.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="*/*" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="true"
         android:fullBackupContent="@xml/backup_rules"

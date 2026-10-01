@@ -13,7 +13,7 @@ on:
       versao:
         description: 'Nome da versão (ex.: 1.0.0)'
         required: false
-        default: '1.1.0'
+        default: '1.2.0'
       modo:
         description: 'Qual aplicativo gerar (na dúvida, deixe "ambos")'
         required: false
@@ -124,7 +124,7 @@ jobs:
         id: apk
         run: |
           VERSAO="${{ github.event.inputs.versao }}"
-          [ -z "$VERSAO" ] && VERSAO="1.1.0"
+          [ -z "$VERSAO" ] && VERSAO="1.2.0"
           mkdir -p entrega
           find android/app/build/outputs/apk -name "*.apk" | while read -r ARQ; do
             case "$ARQ" in

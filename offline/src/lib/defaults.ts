@@ -28,6 +28,23 @@ export type CompanySettings = {
   inactiveCustomerDays: string;
   productionCoverageDays: string;
   purchaseCoverageDays: string;
+  // Dados da loja, usados no comprovante e no catálogo
+  storeName: string;
+  storeDocument: string;
+  storeAddress: string;
+  storeCity: string;
+  storeWhatsapp: string;
+  receiptFooter: string;
+  // Recebimento por Pix
+  pixEnabled: string;
+  pixKey: string;
+  pixKeyType: string;
+  pixHolder: string;
+  pixCity: string;
+  // Conferência do extrato
+  reconcileDaysTolerance: string;
+  cardDaysTolerance: string;
+  cardFeeTolerancePct: string;
 };
 
 export const DEFAULT_SETTINGS: CompanySettings = {
@@ -41,6 +58,20 @@ export const DEFAULT_SETTINGS: CompanySettings = {
   inactiveCustomerDays: "30",
   productionCoverageDays: "15",
   purchaseCoverageDays: "20",
+  storeName: "Loja da Banana",
+  storeDocument: "",
+  storeAddress: "",
+  storeCity: "",
+  storeWhatsapp: "",
+  receiptFooter: "Obrigado pela preferência!",
+  pixEnabled: "false",
+  pixKey: "",
+  pixKeyType: "AUTO",
+  pixHolder: "",
+  pixCity: "",
+  reconcileDaysTolerance: "3",
+  cardDaysTolerance: "45",
+  cardFeeTolerancePct: "8",
 };
 
 export const SETTING_LABELS: Record<keyof CompanySettings, { label: string; help: string; suffix?: string }> = {
@@ -54,6 +85,20 @@ export const SETTING_LABELS: Record<keyof CompanySettings, { label: string; help
   inactiveCustomerDays: { label: "Cliente inativo", help: "Alertar cliente sem compras há X dias", suffix: " dias" },
   productionCoverageDays: { label: "Cobertura de produção", help: "Dias de venda que a produção sugerida deve cobrir", suffix: " dias" },
   purchaseCoverageDays: { label: "Cobertura de compra", help: "Dias de consumo que a compra sugerida deve cobrir", suffix: " dias" },
+  storeName: { label: "Nome da loja", help: "Aparece no comprovante e no catálogo" },
+  storeDocument: { label: "CNPJ ou CPF", help: "Opcional, aparece no comprovante" },
+  storeAddress: { label: "Endereço", help: "Rua, número e bairro" },
+  storeCity: { label: "Cidade", help: "Cidade e estado" },
+  storeWhatsapp: { label: "WhatsApp da loja", help: "Com DDD, só números" },
+  receiptFooter: { label: "Mensagem do rodapé", help: "Texto final do comprovante" },
+  pixEnabled: { label: "Mostrar Pix no comprovante", help: "Inclui a chave e o copia e cola" },
+  pixKey: { label: "Chave Pix", help: "CPF/CNPJ, telefone, e-mail ou chave aleatória" },
+  pixKeyType: { label: "Tipo da chave", help: "Deixe em automático se não tiver certeza" },
+  pixHolder: { label: "Nome do beneficiário", help: "Como está cadastrado no banco" },
+  pixCity: { label: "Cidade do beneficiário", help: "Exigida pelo padrão do Pix" },
+  reconcileDaysTolerance: { label: "Tolerância de dias (Pix)", help: "Diferença aceita entre a venda e o crédito", suffix: " dias" },
+  cardDaysTolerance: { label: "Tolerância de dias (cartão)", help: "Prazo máximo de repasse da maquininha", suffix: " dias" },
+  cardFeeTolerancePct: { label: "Taxa máxima de cartão", help: "Diferença aceita entre a venda e o repasse", suffix: "%" },
 };
 
 export const UNIT_LABELS: Record<string, string> = {
@@ -97,7 +142,8 @@ export const PRODUCTION_STATUS_LABELS: Record<string, string> = {
 
 export const MOVEMENT_REASON_LABELS: Record<string, string> = {
   PURCHASE: "Compra", PRODUCTION_IN: "Produção", PRODUCTION_OUT: "Consumo na produção",
-  SALE: "Venda", LOSS: "Perda", ADJUSTMENT: "Ajuste", TRANSFER_IN: "Transferência (entrada)",
+  SALE: "Venda", LOSS: "Perda", ADJUSTMENT: "Ajuste", INVENTORY: "Inventário",
+  TRANSFER_IN: "Transferência (entrada)",
   TRANSFER_OUT: "Transferência (saída)", RETURN_IN: "Devolução (entrada)",
   RETURN_OUT: "Devolução (saída)", OPENING: "Saldo inicial",
 };
@@ -110,3 +156,40 @@ export const PURCHASE_STATUS_LABELS: Record<string, string> = {
   DRAFT: "Rascunho", ORDERED: "Pedido feito", PARTIAL: "Recebido parcial",
   RECEIVED: "Recebido", CANCELLED: "Cancelado",
 };
+
+export const ACCOUNT_KIND_LABELS: Record<string, string> = {
+  CASH: "Caixa", BANK: "Conta bancária", CARD: "Maquininha / cartão",
+};
+
+export const STATEMENT_KIND_LABELS: Record<string, string> = {
+  BANK: "Extrato bancário", CARD: "Extrato de cartão",
+};
+
+export const STATEMENT_LINE_STATUS_LABELS: Record<string, string> = {
+  PENDING: "A conferir", MATCHED: "Conferido", POSTED: "Lançado", IGNORED: "Ignorado",
+};
+
+export const INVENTORY_STATUS_LABELS: Record<string, string> = {
+  OPEN: "Em contagem", CLOSED: "Fechado", CANCELLED: "Cancelado",
+};
+
+/**
+ * Ajustes extraordinários de estoque.
+ * Todos pedem justificativa e aceitam o documento que autoriza o lançamento.
+ */
+export const STOCK_ADJUSTMENT_KINDS = [
+  { id: "LOSS", label: "Perda", icon: "🗑️", direction: "OUT",
+    help: "Quebra, vencimento, avaria ou descarte." },
+  { id: "RETURN_IN", label: "Devolução", icon: "↩️", direction: "IN",
+    help: "Mercadoria que voltou do cliente." },
+  { id: "INVENTORY", label: "Inventário", icon: "📋", direction: "SET",
+    help: "Acerta o saldo pela contagem física." },
+  { id: "ADJUSTMENT", label: "Balanço", icon: "⚖️", direction: "SET",
+    help: "Correção pontual de saldo com justificativa." },
+] as const;
+
+export type StockAdjustmentKind = (typeof STOCK_ADJUSTMENT_KINDS)[number]["id"];
+
+/** Teto por arquivo: tudo isso vai dentro do backup em JSON. */
+export const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
+export const WARN_ATTACHMENT_BYTES = 700 * 1024;

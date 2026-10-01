@@ -11,8 +11,8 @@ android {
         applicationId = "com.lojadabanana.erp"
         minSdk = 24          // Android 7.0 — cobre praticamente todo aparelho em uso
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 3
+        versionName = "1.2.0"
     }
 
     signingConfigs {

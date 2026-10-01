@@ -1,7 +1,8 @@
 import Dexie, { type Table } from "dexie";
 import type {
-  Batch, Customer, FinanceEntry, LogEntry, Movement, PriceRule,
-  Product, Production, Recipe, Sale, Setting,
+  Account, Attachment, Batch, Customer, FinanceEntry, Inventory, LogEntry,
+  Movement, PriceChange, PriceRule, Product, Production, Recipe, Sale,
+  Setting, Statement, StatementLine, Transfer,
 } from "./types";
 
 /**
@@ -21,6 +22,13 @@ export class LojaDaBananaDB extends Dexie {
   priceRules!: Table<PriceRule, string>;
   settings!: Table<Setting, string>;
   logs!: Table<LogEntry, string>;
+  attachments!: Table<Attachment, string>;
+  priceChanges!: Table<PriceChange, string>;
+  inventories!: Table<Inventory, string>;
+  accounts!: Table<Account, string>;
+  transfers!: Table<Transfer, string>;
+  statements!: Table<Statement, string>;
+  statementLines!: Table<StatementLine, string>;
 
   constructor() {
     super("loja-da-banana");
@@ -42,6 +50,27 @@ export class LojaDaBananaDB extends Dexie {
     this.version(2).stores({
       batches: "id, productId, code, expiresAt, availableQty, productionId",
     });
+
+    // Documentos anexados, auditoria de preço, inventário, contas e extratos.
+    this.version(3).stores({
+      attachments: "id, [entity+entityId], createdAt",
+      priceChanges: "id, productId, createdAt",
+      inventories: "id, code, status, startedAt",
+      accounts: "id, name, kind, active",
+      transfers: "id, fromAccountId, toAccountId, happenedAt, deletedAt",
+      statements: "id, accountId, importedAt",
+      statementLines: "id, statementId, status, date, fingerprint, amount",
+    }).upgrade(async (tx) => {
+      // Campos novos com valor neutro. O resto do código já lê com padrão,
+      // mas gravar agora evita linhas "meio antigas" nos relatórios.
+      await tx.table("products").toCollection().modify((p: Record<string, unknown>) => {
+        if (p.commissionPct === undefined) p.commissionPct = "0";
+        if (p.qtyDiscounts === undefined) p.qtyDiscounts = [];
+      });
+      await tx.table("sales").toCollection().modify((s: Record<string, unknown>) => {
+        if (s.revision === undefined) s.revision = 1;
+      });
+    });
   }
 }
 
@@ -61,6 +90,8 @@ export const nowIso = () => new Date().toISOString();
 export const TABLES = [
   "products", "batches", "movements", "recipes", "productions",
   "customers", "sales", "finance", "priceRules", "settings", "logs",
+  "attachments", "priceChanges", "inventories", "accounts", "transfers",
+  "statements", "statementLines",
 ] as const;
 
 export type TableName = (typeof TABLES)[number];

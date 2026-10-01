@@ -126,7 +126,9 @@ test.describe("Loja da Banana — aplicativo offline", () => {
 
     await page.getByRole("button", { name: /Finalizar venda/ }).click();
     await expect(page.getByText(/registrada com sucesso/)).toBeVisible();
-    await expect(page.getByText("Lucro bruto")).toBeVisible();
+    // Lucro e custo não aparecem mais em tela de venda — só nos relatórios.
+    await expect(page.getByText("Lucro bruto")).toHaveCount(0);
+    await expect(page.getByText("Custo", { exact: true })).toHaveCount(0);
   });
 
   test("bloqueia venda sem estoque", async ({ page }) => {

@@ -1,7 +1,9 @@
 import { db, newId, nowIso, registerLog } from "@/data/db";
-import type { FinanceDirection, FinanceEntry, PaymentMethod } from "@/data/types";
+import type { FinanceDirection, FinanceEntry, PaymentMethod, Transfer } from "@/data/types";
 import { D, ZERO, money, store } from "@/lib/money";
+import { brl } from "@/lib/format";
 import { BusinessError } from "./codes";
+import { attachFile } from "./attachments";
 import type Decimal from "decimal.js";
 
 export async function createFinanceEntry(input: {
@@ -14,6 +16,9 @@ export async function createFinanceEntry(input: {
   supplierName?: string | null;
   installments?: number;
   notes?: string;
+  accountId?: string | null;
+  /** Nota fiscal, recibo ou autorização do lançamento. */
+  document?: File | null;
 }): Promise<FinanceEntry[]> {
   const amount = money(input.amount);
   if (amount.lessThanOrEqualTo(0)) throw new BusinessError("Informe um valor maior que zero.");
@@ -46,18 +51,99 @@ export async function createFinanceEntry(input: {
       installments: count,
       payments: [],
       notes: input.notes ?? null,
+      accountId: input.accountId ?? null,
+      attachmentId: null,
+      reconciledAt: null,
+      statementLineId: null,
+      deletedAt: null,
     };
     await db.finance.add(entry);
     created.push(entry);
   }
 
+  // O documento vale para o lançamento todo; as parcelas apontam para ele.
+  if (input.document && created.length) {
+    const attachment = await attachFile(
+      { entity: "FinanceEntry", entityId: created[0].id },
+      input.document,
+      input.description,
+    );
+    for (const entry of created) {
+      await db.finance.update(entry.id, { attachmentId: attachment.id });
+      entry.attachmentId = attachment.id;
+    }
+  }
+
   await registerLog(
     "CREATE", "Financeiro",
     `${input.direction === "PAYABLE" ? "Conta a pagar" : "Conta a receber"}: ` +
-      `${input.description} — R$ ${amount.toFixed(2)}`,
+      `${input.description} — ${brl(amount)}` +
+      (input.document ? " (com documento anexado)" : ""),
     created[0]?.id,
   );
   return created;
+}
+
+/**
+ * Transferência entre contas próprias (do caixa para o banco, por exemplo).
+ *
+ * Não é receita nem despesa: não entra no resultado, só fica registrada com
+ * o comprovante anexado. É por isso que tem tabela própria em vez de virar
+ * um par de lançamentos que inflaria o financeiro.
+ */
+export async function createTransfer(input: {
+  fromAccountId: string;
+  toAccountId: string;
+  amount: string | number;
+  description: string;
+  happenedAt?: string;
+  document?: File | null;
+}): Promise<Transfer> {
+  const amount = money(input.amount);
+  if (amount.lessThanOrEqualTo(0)) throw new BusinessError("Informe um valor maior que zero.");
+  if (!input.fromAccountId || !input.toAccountId) {
+    throw new BusinessError("Escolha a conta de origem e a de destino.");
+  }
+  if (input.fromAccountId === input.toAccountId) {
+    throw new BusinessError("A conta de origem e a de destino precisam ser diferentes.");
+  }
+
+  const [from, to] = await Promise.all([
+    db.accounts.get(input.fromAccountId),
+    db.accounts.get(input.toAccountId),
+  ]);
+  if (!from || !to) throw new BusinessError("Conta não encontrada.");
+
+  const transfer: Transfer = {
+    id: newId(),
+    fromAccountId: input.fromAccountId,
+    toAccountId: input.toAccountId,
+    amount: store(amount),
+    description: input.description.trim() || `${from.name} → ${to.name}`,
+    happenedAt: input.happenedAt ? new Date(input.happenedAt).toISOString() : nowIso(),
+    attachmentId: null,
+    createdAt: nowIso(),
+    deletedAt: null,
+  };
+  await db.transfers.add(transfer);
+
+  if (input.document) {
+    const attachment = await attachFile(
+      { entity: "Transfer", entityId: transfer.id },
+      input.document,
+      transfer.description,
+    );
+    await db.transfers.update(transfer.id, { attachmentId: attachment.id });
+    transfer.attachmentId = attachment.id;
+  }
+
+  await registerLog(
+    "CREATE", "Transferência",
+    `${from.name} → ${to.name}: ${brl(amount)}` +
+      (input.document ? " (com comprovante)" : ""),
+    transfer.id,
+  );
+  return transfer;
 }
 
 /** Baixa total ou parcial de um título. */
@@ -78,7 +164,7 @@ export async function registerPayment(input: {
     const amount = input.amount ? money(input.amount) : outstanding;
     if (amount.lessThanOrEqualTo(0)) throw new BusinessError("Valor de pagamento inválido.");
     if (amount.greaterThan(outstanding)) {
-      throw new BusinessError(`Valor acima do saldo devedor (R$ ${outstanding.toFixed(2)}).`);
+      throw new BusinessError(`Valor acima do saldo devedor (${brl(outstanding)}).`);
     }
 
     const paidAmount = money(D(entry.paidAmount).plus(amount));
@@ -101,7 +187,7 @@ export async function registerPayment(input: {
 
     await registerLog(
       "UPDATE", "Financeiro",
-      `Baixa de R$ ${amount.toFixed(2)} em "${entry.description}" (${input.method})`,
+      `Baixa de ${brl(amount)} em "${entry.description}" (${input.method})`,
       entry.id,
     );
   });

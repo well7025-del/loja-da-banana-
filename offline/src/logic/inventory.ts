@@ -201,6 +201,10 @@ export async function registerAdjustment(input: {
   productId: string;
   countedQty: Decimal | number | string;
   note?: string | null;
+  /** "ADJUSTMENT" para balanço avulso, "INVENTORY" para contagem formal. */
+  reason?: MovementReason;
+  refType?: string | null;
+  refId?: string | null;
 }): Promise<Movement | null> {
   const counted = qty(input.countedQty);
   const product = await db.products.get(input.productId);
@@ -217,13 +221,13 @@ export async function registerAdjustment(input: {
     productId: product.id,
     batchId: null,
     type: "ADJUST",
-    reason: "ADJUSTMENT",
+    reason: input.reason ?? "ADJUSTMENT",
     quantity: store(delta.abs()),
     unitCost: store(D(product.avgCost)),
     totalCost: store(money(delta.abs().times(D(product.avgCost)))),
     balanceAfter: store(counted),
-    refType: null,
-    refId: null,
+    refType: input.refType ?? null,
+    refId: input.refId ?? null,
     note: input.note ?? `Ajuste: ${current.toFixed(3)} → ${counted.toFixed(3)}`,
     createdAt: nowIso(),
   };

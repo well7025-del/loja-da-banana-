@@ -1,18 +1,25 @@
-import { useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/data/db";
 import { D } from "@/lib/money";
 import { brl, date, datetime, num } from "@/lib/format";
 import { FINANCE_STATUS_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/defaults";
 import { cancelSale } from "@/logic/sales";
-import { Badge, Card, Message, PageHeader, SectionTitle, Spinner, StatCard } from "@/components/ui";
+import { buildSaleReceipt, type ReceiptDocument } from "@/logic/documents";
+import { openWhatsapp, shareFile } from "@/logic/bridge";
+import {
+  Badge, Card, CopyBox, Message, PageHeader, SectionTitle, Spinner, StatCard,
+} from "@/components/ui";
 
 export default function SaleDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [params] = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [receipt, setReceipt] = useState<ReceiptDocument | null>(null);
+  const [sharing, setSharing] = useState(false);
 
   const data = useLiveQuery(async () => {
     if (!id) return null;
@@ -28,6 +35,16 @@ export default function SaleDetailPage() {
     );
     return { sale, customer, byId, entries: entries.sort((a, b) => a.installment - b.installment) };
   }, [id]);
+
+  // O comprovante é montado assim que a venda abre: o Pix precisa estar à mão.
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    buildSaleReceipt(id)
+      .then((built) => { if (!cancelled) setReceipt(built); })
+      .catch(() => { if (!cancelled) setReceipt(null); });
+    return () => { cancelled = true; };
+  }, [id, data?.sale.revision, data?.sale.status]);
 
   if (data === undefined) return <Spinner />;
   if (!data?.sale) return <p className="py-8 text-center text-sm text-ink-500">Venda não encontrada.</p>;
@@ -48,6 +65,32 @@ export default function SaleDetailPage() {
     }
   }
 
+  async function enviarPdf() {
+    if (!receipt) return;
+    setError(null); setNotice(null); setSharing(true);
+    try {
+      const result = await shareFile({
+        fileName: receipt.fileName,
+        base64: receipt.pdf.toBase64(),
+        mime: "application/pdf",
+        text: receipt.text,
+        title: `Comprovante ${sale.number}`,
+      });
+      if (result.ok) setNotice(result.message); else setError(result.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSharing(false);
+    }
+  }
+
+  async function enviarTexto() {
+    if (!receipt) return;
+    setError(null); setNotice(null);
+    const result = await openWhatsapp(receipt.text, receipt.customer?.whatsapp ?? null);
+    if (!result.ok) setError(result.message);
+  }
+
   return (
     <div>
       {params.get("nova") === "1" && (
@@ -55,17 +98,63 @@ export default function SaleDetailPage() {
       )}
       {(error || notice) && <div className="mb-3"><Message error={error} success={notice} /></div>}
 
-      <PageHeader title={`Venda ${sale.number}`} subtitle={datetime(sale.soldAt)}
+      <PageHeader
+        title={`Venda ${sale.number}${(sale.revision ?? 1) > 1 ? ` (v${sale.revision})` : ""}`}
+        subtitle={datetime(sale.soldAt)}
         action={sale.status === "CANCELLED"
-          ? <Badge tone="red">cancelada</Badge>
+          ? <Badge tone="red">{sale.replacedBySaleId ? "substituída" : "cancelada"}</Badge>
           : <Badge tone="green">concluída</Badge>} />
 
-      <div className="grid grid-cols-3 gap-2.5">
-        <StatCard label="Total" value={brl(sale.total)} />
-        <StatCard label="Custo" value={brl(sale.costTotal)} />
-        <StatCard label="Lucro bruto" value={brl(sale.grossProfit)} tone="green"
-          hint={`${num(D(sale.marginPct), 1)}% de margem`} />
+      {sale.replacedBySaleId && (
+        <div className="mb-3">
+          <Message info="Esta versão foi substituída por uma alteração posterior." />
+          <Link to={`/vendas/${sale.replacedBySaleId}`}
+            className="btn-ghost mt-2 w-full">Abrir a versão atual</Link>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-2.5">
+        <StatCard label="Total da venda" value={brl(sale.total)} />
+        <StatCard label="Itens" value={String(sale.items.length)}
+          hint={num(sale.items.reduce((acc, item) => acc + Number(item.quantity), 0), 3)} />
       </div>
+
+      {sale.status === "COMPLETED" && (
+        <>
+          <SectionTitle>Comprovante</SectionTitle>
+          <Card className="space-y-3">
+            {receipt?.pix && (
+              <CopyBox
+                label="Pix copia e cola"
+                value={receipt.pix.payload}
+                hint={`Chave ${receipt.pix.key} — ${receipt.pix.holder}. ` +
+                  "O cliente cola isso no banco e o valor já vem preenchido."}
+              />
+            )}
+            {!receipt?.pix && (
+              <p className="text-sm text-ink-500">
+                Para o comprovante sair com o Pix, preencha a chave em{" "}
+                <Link to="/configuracoes" className="font-semibold text-leaf-700">Configurações</Link>.
+              </p>
+            )}
+
+            <div className="grid gap-2">
+              <button type="button" disabled={!receipt || sharing}
+                onClick={() => void enviarPdf()} className="btn-primary w-full">
+                {sharing ? "Preparando…" : "📄 Enviar comprovante em PDF"}
+              </button>
+              <button type="button" disabled={!receipt}
+                onClick={() => void enviarTexto()} className="btn-ghost w-full">
+                💬 Mandar no WhatsApp{receipt?.customer?.whatsapp ? ` para ${receipt.customer.name}` : ""}
+              </button>
+            </div>
+            <p className="hint">
+              O PDF abre o menu do Android — escolha o WhatsApp e a conversa. A mensagem
+              vai junto com o Pix copia e cola.
+            </p>
+          </Card>
+        </>
+      )}
 
       <SectionTitle>Itens</SectionTitle>
       <Card pad={false}>
@@ -144,9 +233,18 @@ export default function SaleDetailPage() {
       )}
 
       {sale.status === "COMPLETED" && (
-        <button type="button" onClick={() => void cancelar()} className="btn-ghost mt-4 w-full !text-red-600">
-          Cancelar venda
-        </button>
+        <div className="mt-4 space-y-2">
+          <button type="button" onClick={() => navigate(`/vendas/${sale.id}/alterar`)}
+            className="btn-ghost w-full">
+            ✏️ Alterar venda
+          </button>
+          <button type="button" onClick={() => void cancelar()} className="btn-ghost w-full !text-red-600">
+            Cancelar venda
+          </button>
+          <p className="hint text-center">
+            Alterar devolve o estoque desta venda e emite uma nova versão com o mesmo número.
+          </p>
+        </div>
       )}
     </div>
   );

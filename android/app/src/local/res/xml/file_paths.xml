@@ -2,4 +2,8 @@
 <paths>
     <!-- Onde o backup é gravado antes de ir para o Drive -->
     <cache-path name="backups" path="backups/" />
+    <!-- Comprovantes, catálogos e relatórios em PDF, antes de compartilhar -->
+    <cache-path name="documentos" path="documentos/" />
+    <!-- Foto tirada na hora pela câmera, para anexar ou virar foto do produto -->
+    <cache-path name="fotos" path="fotos/" />
 </paths>

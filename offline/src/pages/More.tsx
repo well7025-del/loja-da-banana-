@@ -18,11 +18,16 @@ const MENU = [
       { to: "/fichas-tecnicas", icon: "📐", label: "Fichas técnicas" },
       { to: "/estoque/lotes", icon: "🏷️", label: "Lotes e validade" },
       { to: "/estoque/movimentos", icon: "🔁", label: "Movimentações" },
+      { to: "/estoque/ajustes", icon: "⚠️", label: "Ajuste extraordinário" },
+      { to: "/inventario", icon: "📋", label: "Inventário" },
     ],
   },
   {
     group: "Gestão",
     items: [
+      { to: "/relatorios", icon: "📊", label: "Relatórios" },
+      { to: "/conciliacao", icon: "🏦", label: "Conferir extrato bancário" },
+      { to: "/catalogo", icon: "📣", label: "Enviar catálogo" },
       { to: "/central-decisoes", icon: "🧠", label: "Central de Decisões" },
       { to: "/precificacao", icon: "🏷️", label: "Formação de preço" },
     ],

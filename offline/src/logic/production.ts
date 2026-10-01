@@ -1,6 +1,7 @@
 import { db, newId, nowIso, registerLog } from "@/data/db";
 import type { Consumption, Production } from "@/data/types";
 import { D, HUNDRED, ONE, ZERO, money, pct, qty, store } from "@/lib/money";
+import { brl } from "@/lib/format";
 import { BusinessError, nextCode } from "./codes";
 import { computeRecipeCost, grossQuantity } from "./costing";
 import { registerEntry, registerExit } from "./inventory";
@@ -319,7 +320,7 @@ export async function finishProduction(input: {
       await registerLog(
         "UPDATE", "Produção",
         `Finalizou ${production.code}: ${producedQty.toFixed(3)} ${product.unit.toLowerCase()} — ` +
-          `lote ${batchCode} — custo R$ ${totalCost.toFixed(2)}`,
+          `lote ${batchCode} — custo ${brl(totalCost)}`,
         production.id,
       );
 

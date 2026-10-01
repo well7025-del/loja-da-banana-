@@ -6,6 +6,7 @@ const PREFIX = {
   batch: "LB",
   production: "OP",
   sale: "VD",
+  inventory: "INV",
 } as const;
 
 export type Sequenced = keyof typeof PREFIX;
@@ -30,6 +31,8 @@ export async function nextCode(kind: Sequenced, when = new Date()): Promise<stri
     last = (await db.batches.where("code").startsWith(prefix).last())?.code;
   } else if (kind === "production") {
     last = (await db.productions.where("code").startsWith(prefix).last())?.code;
+  } else if (kind === "inventory") {
+    last = (await db.inventories.where("code").startsWith(prefix).last())?.code;
   } else {
     last = (await db.sales.where("number").startsWith(prefix).last())?.number;
   }

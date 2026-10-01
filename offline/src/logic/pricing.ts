@@ -2,7 +2,7 @@ import type { CustomerType, PriceRule, Product, SaleChannel } from "@/data/types
 import { D, ZERO, money, pct } from "@/lib/money";
 import type Decimal from "decimal.js";
 
-type LineContext = {
+export type LineContext = {
   productId: string;
   quantity: Decimal;
   customerType?: CustomerType | null;
@@ -65,4 +65,63 @@ export function basePrice(product: Product, channel: SaleChannel): Decimal {
   const wholesale = D(product.wholesalePrice);
   if (channel === "WHOLESALE" && wholesale.greaterThan(0)) return money(wholesale);
   return money(D(product.salePrice));
+}
+
+
+/**
+ * Faixas de desconto cadastradas no próprio produto
+ * ("acima de 5 kg, 5%"). Vale a melhor faixa alcançada pela quantidade.
+ */
+export function productQtyDiscount(product: Product | undefined, quantity: Decimal) {
+  let best = ZERO;
+  let label: string | null = null;
+
+  for (const tier of product?.qtyDiscounts ?? []) {
+    const min = D(tier.minQty);
+    const value = D(tier.discountPct);
+    if (min.greaterThan(0) && quantity.greaterThanOrEqualTo(min) && value.greaterThan(best)) {
+      best = value;
+      label = `A partir de ${min.toString()}`;
+    }
+  }
+  return { discountPct: pct(best), label };
+}
+
+export type DiscountSource = "produto" | "regra" | "cliente" | null;
+
+/**
+ * Desconto automático da linha: o maior entre a faixa do produto, as regras
+ * gerais e o desconto padrão do cliente. Nenhum percentual é fixo no código.
+ */
+export function bestLineDiscount(
+  rules: PriceRule[],
+  product: Product | undefined,
+  ctx: LineContext,
+  customerDefaultPct: Decimal,
+): { discountPct: Decimal; source: DiscountSource; label: string | null } {
+  const fromProduct = productQtyDiscount(product, ctx.quantity);
+  const fromRules = resolveLineDiscount(rules, ctx);
+
+  let discountPct = ZERO;
+  let source: DiscountSource = null;
+  let label: string | null = null;
+
+  const consider = (value: Decimal, nextSource: DiscountSource, nextLabel: string | null) => {
+    if (value.greaterThan(discountPct)) {
+      discountPct = value;
+      source = nextSource;
+      label = nextLabel;
+    }
+  };
+
+  consider(fromProduct.discountPct, "produto", fromProduct.label);
+  consider(fromRules.discountPct, "regra", fromRules.rule?.name ?? null);
+  consider(pct(customerDefaultPct), "cliente", "Desconto do cliente");
+
+  return { discountPct: pct(discountPct), source, label };
+}
+
+/** Comissão cadastrada no produto, em percentual. */
+export function commissionPctOf(product: Product | undefined): Decimal {
+  return pct(D(product?.commissionPct ?? 0));
 }

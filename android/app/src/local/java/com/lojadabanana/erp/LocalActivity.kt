@@ -14,6 +14,9 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebChromeClient
+import android.webkit.ValueCallback
+import android.provider.MediaStore
+import android.util.Base64
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -38,11 +41,56 @@ class LocalActivity : AppCompatActivity() {
     private var conteudoPendente: String? = null
     private var pedidoCamera: PermissionRequest? = null
 
+    /** Resposta pendente do <input type="file"> aberto pela interface. */
+    private var callbackArquivos: ValueCallback<Array<Uri>>? = null
+    private var parametrosPendentes: WebChromeClient.FileChooserParams? = null
+    private var fotoPendente: Uri? = null
+
     private val permissaoCamera = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { concedida ->
         pedidoCamera?.let { if (concedida) it.grant(it.resources) else it.deny() }
         pedidoCamera = null
+    }
+
+    /**
+     * Resultado do seletor de arquivos do <input type="file">.
+     *
+     * Sem isto o WebView simplesmente ignora o campo de arquivo, e anexar
+     * documento, escolher foto do produto ou importar o extrato não funcionaria
+     * dentro do APK — só no navegador.
+     */
+    private val seletorArquivos = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { resultado ->
+        val callback = callbackArquivos
+        callbackArquivos = null
+        val daCamera = fotoPendente
+        fotoPendente = null
+
+        if (callback == null) return@registerForActivityResult
+
+        val escolhidos: Array<Uri>? = when {
+            resultado.resultCode != RESULT_OK -> null
+            resultado.data?.data != null -> arrayOf(resultado.data!!.data!!)
+            resultado.data?.clipData != null -> {
+                val clip = resultado.data!!.clipData!!
+                Array(clip.itemCount) { clip.getItemAt(it).uri }
+            }
+            // A câmera não devolve dados: grava direto na URI que passamos.
+            daCamera != null -> arrayOf(daCamera)
+            else -> null
+        }
+        callback.onReceiveValue(escolhidos)
+    }
+
+    /** A câmera só pode ser oferecida depois que a permissão existir. */
+    private val permissaoCameraArquivo = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) {
+        val parametros = parametrosPendentes
+        parametrosPendentes = null
+        if (parametros != null) lancarSeletor(parametros)
     }
 
     /** Gravar o backup onde a pessoa escolher (inclusive no Drive). */
@@ -154,6 +202,34 @@ class LocalActivity : AppCompatActivity() {
                     permissaoCamera.launch(Manifest.permission.CAMERA)
                 }
             }
+
+            override fun onShowFileChooser(
+                webView: WebView,
+                filePathCallback: ValueCallback<Array<Uri>>,
+                fileChooserParams: FileChooserParams,
+            ): Boolean {
+                // Um seletor por vez: o anterior precisa receber resposta.
+                callbackArquivos?.onReceiveValue(null)
+                callbackArquivos = filePathCallback
+                fotoPendente = null
+
+                val querImagem = fileChooserParams.acceptTypes.any {
+                    it.contains("image") || it == "*/*" || it.isEmpty()
+                }
+                val temPermissao = ContextCompat.checkSelfPermission(
+                    this@LocalActivity, Manifest.permission.CAMERA,
+                ) == PackageManager.PERMISSION_GRANTED
+
+                // Com a permissão de câmera declarada, o Android exige que ela
+                // esteja concedida antes de abrir a câmera por intent.
+                if (querImagem && !temPermissao) {
+                    parametrosPendentes = fileChooserParams
+                    permissaoCameraArquivo.launch(Manifest.permission.CAMERA)
+                    return true
+                }
+
+                return lancarSeletor(fileChooserParams)
+            }
         }
 
         web.addJavascriptInterface(PonteBackup(), "AndroidBackup")
@@ -231,11 +307,123 @@ class LocalActivity : AppCompatActivity() {
             }
         }
 
+        /**
+         * Compartilha um arquivo qualquer (comprovante, catálogo, relatório).
+         *
+         * O conteúdo chega em base64 porque um PDF não atravessa a ponte como
+         * texto. O menu do Android é quem leva ao WhatsApp — endereçar o pacote
+         * do WhatsApp direto quebraria para quem usa o WhatsApp Business.
+         */
+        @JavascriptInterface
+        fun compartilharArquivo(
+            nomeArquivo: String,
+            base64: String,
+            tipoMime: String,
+            texto: String,
+        ): String = try {
+            val pasta = File(cacheDir, "documentos").apply { mkdirs() }
+            // Só o documento mais recente fica no cache.
+            pasta.listFiles()?.forEach { it.delete() }
+
+            val arquivo = File(pasta, nomeArquivo.ifBlank { "documento" })
+            arquivo.writeBytes(Base64.decode(base64, Base64.DEFAULT))
+
+            val uri: Uri = FileProvider.getUriForFile(
+                this@LocalActivity, "$packageName.arquivos", arquivo,
+            )
+            val envio = Intent(Intent.ACTION_SEND).apply {
+                type = tipoMime.ifBlank { "application/octet-stream" }
+                putExtra(Intent.EXTRA_STREAM, uri)
+                if (texto.isNotBlank()) putExtra(Intent.EXTRA_TEXT, texto)
+                putExtra(Intent.EXTRA_SUBJECT, nomeArquivo)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            runOnUiThread { startActivity(Intent.createChooser(envio, "Enviar por")) }
+            "OK"
+        } catch (e: Exception) {
+            "ERRO: ${e.message}"
+        }
+
+        /** Abre a conversa do WhatsApp já com a mensagem escrita. */
+        @JavascriptInterface
+        fun abrirWhatsapp(telefone: String, texto: String): String = try {
+            val destino = if (telefone.isBlank()) {
+                "https://wa.me/?text=${Uri.encode(texto)}"
+            } else {
+                "https://wa.me/$telefone?text=${Uri.encode(texto)}"
+            }
+            runOnUiThread { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(destino))) }
+            "OK"
+        } catch (e: Exception) {
+            "ERRO: não foi possível abrir o WhatsApp (${e.message})"
+        }
+
         @JavascriptInterface
         fun versaoApp(): String = BuildConfig.VERSION_NAME
 
         @JavascriptInterface
         fun recarregar() = runOnUiThread { web.loadUrl("$BASE/index.html") }
+    }
+
+    /**
+     * Abre o seletor do sistema, somando a câmera quando a página pede imagem.
+     *
+     * `createIntent()` sozinho só oferece a galeria e os arquivos; a câmera
+     * entra como intent adicional do seletor.
+     */
+    private fun lancarSeletor(parametros: WebChromeClient.FileChooserParams): Boolean {
+        val base = parametros.createIntent()
+        val querImagem = parametros.acceptTypes.any {
+            it.contains("image") || it == "*/*" || it.isEmpty()
+        }
+
+        val seletor = Intent.createChooser(base, "Escolher arquivo")
+
+        // Um app que declara a permissão de câmera só consegue abrir a câmera
+        // por intent depois que ela for concedida — senão a opção falharia.
+        val podeUsarCamera = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.CAMERA,
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (querImagem && podeUsarCamera) {
+            val camera = intentDaCamera()
+            if (camera != null) {
+                seletor.putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(camera))
+            }
+        }
+
+        return try {
+            seletorArquivos.launch(seletor)
+            true
+        } catch (e: Exception) {
+            callbackArquivos?.onReceiveValue(null)
+            callbackArquivos = null
+            fotoPendente = null
+            false
+        }
+    }
+
+    private fun intentDaCamera(): Intent? = try {
+        val pasta = File(cacheDir, "fotos").apply { mkdirs() }
+        pasta.listFiles()?.forEach { it.delete() }
+
+        val arquivo = File(pasta, "foto-${System.currentTimeMillis()}.jpg")
+        val destino = FileProvider.getUriForFile(this, "$packageName.arquivos", arquivo)
+
+        val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+            putExtra(MediaStore.EXTRA_OUTPUT, destino)
+            addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        }
+
+        if (intent.resolveActivity(packageManager) == null) {
+            null
+        } else {
+            fotoPendente = destino
+            intent
+        }
+    } catch (e: Exception) {
+        fotoPendente = null
+        null
     }
 
     /** Página legível no lugar da tela branca, com o motivo da falha. */

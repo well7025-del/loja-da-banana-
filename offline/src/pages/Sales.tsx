@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/data/db";
 import { D, ZERO, money } from "@/lib/money";
-import { brl, datetime, num } from "@/lib/format";
+import { brl, datetime } from "@/lib/format";
 import { PAYMENT_METHOD_LABELS } from "@/lib/defaults";
 import { dayRange, monthRange } from "@/logic/dashboard";
 import { Badge, Card, EmptyState, PageHeader, Spinner, StatCard } from "@/components/ui";
@@ -19,8 +19,8 @@ export default function SalesPage() {
 
     const inRange = (list: typeof done, from: Date, to: Date) =>
       list.filter((s) => s.soldAt >= from.toISOString() && s.soldAt <= to.toISOString());
-    const sum = (list: typeof done, field: "total" | "grossProfit") =>
-      money(list.reduce((a, s) => a.plus(D(s[field])), ZERO));
+    const sum = (list: typeof done) =>
+      money(list.reduce((a, s) => a.plus(D(s.total)), ZERO));
 
     const todayOnes = inRange(done, today.start, today.end);
     const monthOnes = inRange(done, month.start, month.end);
@@ -34,10 +34,9 @@ export default function SalesPage() {
           (s.customer?.name ?? "").toLowerCase().includes(needle))
         .sort((a, b) => b.soldAt.localeCompare(a.soldAt))
         .slice(0, 100),
-      todayTotal: sum(todayOnes, "total"), todayProfit: sum(todayOnes, "grossProfit"),
-      todayCount: todayOnes.length,
-      monthTotal: sum(monthOnes, "total"), monthProfit: sum(monthOnes, "grossProfit"),
-      monthCount: monthOnes.length,
+      todayTotal: sum(todayOnes), todayCount: todayOnes.length,
+      monthTotal: sum(monthOnes), monthCount: monthOnes.length,
+      pendentes: done.filter((s) => !s.reconciledAt).length,
     };
   }, [query]);
 
@@ -47,10 +46,15 @@ export default function SalesPage() {
         action={<Link to="/vendas/nova" className="btn-banana btn-sm">+ Vender</Link>} />
 
       <div className="grid grid-cols-2 gap-2.5">
-        <StatCard label="Hoje" value={brl(data?.todayTotal ?? 0)}
-          hint={`${data?.todayCount ?? 0} venda(s) · lucro ${brl(data?.todayProfit ?? 0)}`} />
-        <StatCard label="No mês" value={brl(data?.monthTotal ?? 0)} tone="green"
-          hint={`${data?.monthCount ?? 0} venda(s) · lucro ${brl(data?.monthProfit ?? 0)}`} />
+        <StatCard label="Vendido hoje" value={brl(data?.todayTotal ?? 0)}
+          hint={`${data?.todayCount ?? 0} venda(s)`} />
+        <StatCard label="Vendido no mês" value={brl(data?.monthTotal ?? 0)} tone="green"
+          hint={`${data?.monthCount ?? 0} venda(s)`} />
+      </div>
+
+      <div className="mt-2.5 grid grid-cols-2 gap-2.5">
+        <Link to="/catalogo" className="btn-ghost w-full">📣 Enviar catálogo</Link>
+        <Link to="/relatorios/vendas" className="btn-ghost w-full">📊 Resultados</Link>
       </div>
 
       <div className="mt-3">
@@ -83,7 +87,10 @@ export default function SalesPage() {
                     <p className={`font-bold tabular-nums ${
                       sale.status === "CANCELLED" ? "text-ink-400 line-through" : "text-ink-900"
                     }`}>{brl(sale.total)}</p>
-                    <p className="text-xs text-ink-500">margem {num(D(sale.marginPct), 1)}%</p>
+                    <p className="text-xs text-ink-500">
+                      {(sale.revision ?? 1) > 1 ? `versão ${sale.revision}` : ""}
+                      {sale.reconciledAt ? " · conferida" : ""}
+                    </p>
                   </div>
                 </div>
               </Link>

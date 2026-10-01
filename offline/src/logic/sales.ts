@@ -3,8 +3,9 @@ import type {
   Customer, FinanceEntry, PaymentMethod, Product, Sale, SaleChannel, SaleItem,
 } from "@/data/types";
 import { D, HUNDRED, ZERO, money, pct, qty, store } from "@/lib/money";
+import { brl } from "@/lib/format";
 import { BusinessError, nextCode } from "./codes";
-import { basePrice, resolveLineDiscount, resolveOrderDiscount } from "./pricing";
+import { basePrice, bestLineDiscount, commissionPctOf, resolveOrderDiscount } from "./pricing";
 import { registerEntry, registerExit } from "./inventory";
 import { getSettings } from "./settings";
 import type Decimal from "decimal.js";
@@ -27,6 +28,8 @@ export type QuoteLine = {
   unitCost: Decimal;
   totalCost: Decimal;
   appliedRule: string | null;
+  commissionPct: Decimal;
+  commissionValue: Decimal;
 };
 
 export type Quote = {
@@ -43,6 +46,7 @@ export type Quote = {
   costTotal: Decimal;
   grossProfit: Decimal;
   marginPct: Decimal;
+  commissionTotal: Decimal;
 };
 
 /** Cálculo da venda antes de confirmar — o mesmo usado ao gravar. */
@@ -78,23 +82,26 @@ export async function quoteSale(input: {
       : basePrice(product, channel);
     const gross = money(quantity.times(unitPrice));
 
-    const auto = resolveLineDiscount(rules, {
-      productId: product.id,
-      quantity,
-      customerType: customer?.type ?? null,
-      channel,
-    });
+    const customerDefault = customer ? D(customer.defaultDiscountPct) : ZERO;
+    const auto = bestLineDiscount(
+      rules,
+      product,
+      { productId: product.id, quantity, customerType: customer?.type ?? null, channel },
+      customerDefault,
+    );
     const manual = item.discountPct !== undefined && item.discountPct !== ""
       ? pct(item.discountPct)
       : null;
-    const customerDefault = customer ? D(customer.defaultDiscountPct) : ZERO;
-    const discountPct = manual ??
-      pct(auto.discountPct.greaterThan(customerDefault) ? auto.discountPct : customerDefault);
+    const discountPct = manual ?? auto.discountPct;
 
     const discount = money(gross.times(discountPct).dividedBy(HUNDRED));
     const total = money(gross.minus(discount));
     const unitCost = D(product.avgCost);
     const lineCost = money(quantity.times(unitCost));
+
+    // A comissão vigente é congelada aqui e copiada para o item da venda.
+    const commissionPct = commissionPctOf(product);
+    const commissionValue = money(total.times(commissionPct).dividedBy(HUNDRED));
 
     subtotal = subtotal.plus(gross);
     lineDiscount = lineDiscount.plus(discount);
@@ -103,7 +110,8 @@ export async function quoteSale(input: {
     return {
       product, quantity, unitPrice, gross, discountPct, discount, total,
       unitCost, totalCost: lineCost,
-      appliedRule: manual ? null : auto.rule?.name ?? null,
+      appliedRule: manual ? null : auto.label,
+      commissionPct, commissionValue,
     };
   });
 
@@ -129,6 +137,7 @@ export async function quoteSale(input: {
     costTotal: money(costTotal),
     grossProfit,
     marginPct: total.greaterThan(0) ? pct(grossProfit.dividedBy(total).times(HUNDRED)) : ZERO,
+    commissionTotal: money(lines.reduce((acc, line) => acc.plus(line.commissionValue), ZERO)),
   };
 }
 
@@ -142,38 +151,27 @@ export async function createSale(input: {
   freight?: string | number;
   extraDiscount?: string | number;
   notes?: string;
+  /** Usados só pela alteração de venda, para manter o mesmo número. */
+  keepNumber?: string;
+  revision?: number;
+  replacesSaleId?: string | null;
 }): Promise<Sale> {
   if (!input.items?.length) throw new BusinessError("Adicione ao menos um produto à venda.");
+  if (input.paymentMethod === "TERM") {
+    throw new BusinessError(
+      "A venda a prazo não é mais usada. Escolha Pix, dinheiro, cartão ou transferência.",
+    );
+  }
 
   const settings = await getSettings();
   const allowNegative = settings.allowNegativeStock === "true";
   const quote = await quoteSale(input);
 
-  // Limite de crédito na venda a prazo
-  if (input.paymentMethod === "TERM") {
-    if (!input.customerId) throw new BusinessError("Venda a prazo exige um cliente cadastrado.");
-    const customer = quote.customer!;
-    if (D(customer.creditLimit).greaterThan(0)) {
-      const open = (await db.finance.where("customerId").equals(customer.id).toArray())
-        .filter((e) => e.direction === "RECEIVABLE" && !e.deletedAt &&
-          (e.status === "OPEN" || e.status === "PARTIAL"));
-      const outstanding = open.reduce(
-        (a, e) => a.plus(D(e.amount).minus(D(e.paidAmount))), ZERO,
-      );
-      if (outstanding.plus(quote.total).greaterThan(D(customer.creditLimit))) {
-        throw new BusinessError(
-          `Limite de crédito excedido. Em aberto: R$ ${outstanding.toFixed(2)}, ` +
-            `limite: R$ ${D(customer.creditLimit).toFixed(2)}.`,
-        );
-      }
-    }
-  }
-
   return db.transaction(
     "rw",
     [db.sales, db.products, db.batches, db.movements, db.finance, db.priceRules, db.customers, db.logs],
     async () => {
-      const number = await nextCode("sale");
+      const number = input.keepNumber ?? (await nextCode("sale"));
       const saleId = newId();
       const items: SaleItem[] = [];
       let costTotal = ZERO;
@@ -200,6 +198,8 @@ export async function createSale(input: {
           total: store(line.total),
           unitCost: store(exit.unitCost),
           totalCost: store(exit.totalCost),
+          commissionPct: store(line.commissionPct),
+          commissionValue: store(line.commissionValue),
         });
       }
 
@@ -225,13 +225,17 @@ export async function createSale(input: {
         dueDate: input.dueDate ?? null,
         soldAt: nowIso(),
         notes: input.notes ?? null,
+        revision: input.revision ?? 1,
+        replacesSaleId: input.replacesSaleId ?? null,
+        replacedBySaleId: null,
       };
       await db.sales.add(sale);
       await createReceivables(sale);
 
       await registerLog(
-        "CREATE", "Venda",
-        `Venda ${number} — R$ ${quote.total.toFixed(2)} (${input.paymentMethod})`,
+        input.replacesSaleId ? "UPDATE" : "CREATE", "Venda",
+        `Venda ${number}${input.revision && input.revision > 1 ? ` (versão ${input.revision})` : ""}` +
+          ` — ${brl(quote.total)} (${input.paymentMethod})`,
         saleId,
       );
       return sale;
@@ -283,43 +287,119 @@ async function createReceivables(sale: Sale) {
   }
 }
 
-/** Cancela a venda: devolve o estoque e cancela os títulos em aberto. */
+/**
+ * Tabelas tocadas por qualquer operação de venda.
+ *
+ * `settings` precisa estar aqui porque a alteração de venda chama createSale
+ * de dentro desta transação, e createSale lê os parâmetros da empresa. Dexie
+ * só deixa acessar as tabelas declaradas no escopo: faltando uma, a operação
+ * inteira falha com "object store was not found".
+ */
+const SALE_TABLES = () => [
+  db.sales, db.products, db.batches, db.movements, db.finance,
+  db.priceRules, db.customers, db.settings, db.logs,
+];
+
+/**
+ * Desfaz o efeito de uma venda: devolve o estoque ao lote de origem e
+ * cancela os títulos que ainda estiverem abertos.
+ *
+ * O custo médio não é recalculado na volta — a devolução entra pelo mesmo
+ * custo que saiu, senão uma venda ida e volta mexeria no custo do produto.
+ */
+async function reverseSale(sale: Sale, note: string) {
+  for (const item of sale.items) {
+    await registerEntry({
+      productId: item.productId,
+      quantity: item.quantity,
+      unitCost: item.unitCost,
+      reason: "RETURN_IN",
+      batchId: item.batchId,
+      refType: "Sale",
+      refId: sale.id,
+      note,
+      updateAvgCost: false,
+    });
+  }
+
+  const entries = await db.finance.where("saleId").equals(sale.id).toArray();
+  for (const entry of entries) {
+    if (entry.status === "OPEN" || entry.status === "PARTIAL" || entry.status === "PAID") {
+      await db.finance.update(entry.id, { status: "CANCELLED" });
+    }
+  }
+}
+
+/** Cancela a venda: devolve o estoque e cancela os títulos. */
 export async function cancelSale(saleId: string, reason: string) {
-  return db.transaction(
-    "rw",
-    [db.sales, db.products, db.batches, db.movements, db.finance, db.logs],
-    async () => {
-      const sale = await db.sales.get(saleId);
-      if (!sale) throw new BusinessError("Venda não encontrada.");
-      if (sale.status === "CANCELLED") throw new BusinessError("Venda já cancelada.");
+  return db.transaction("rw", SALE_TABLES(), async () => {
+    const sale = await db.sales.get(saleId);
+    if (!sale) throw new BusinessError("Venda não encontrada.");
+    if (sale.status === "CANCELLED") throw new BusinessError("Venda já cancelada.");
 
-      for (const item of sale.items) {
-        await registerEntry({
-          productId: item.productId,
-          quantity: item.quantity,
-          unitCost: item.unitCost,
-          reason: "RETURN_IN",
-          batchId: item.batchId,
-          refType: "Sale",
-          refId: sale.id,
-          note: `Cancelamento da venda ${sale.number}`,
-          updateAvgCost: false,
-        });
-      }
+    await reverseSale(sale, `Cancelamento da venda ${sale.number}`);
+    await db.sales.update(sale.id, {
+      status: "CANCELLED",
+      cancelledAt: nowIso(),
+      cancelReason: reason,
+    });
+    await registerLog("CANCEL", "Venda", `Cancelou a venda ${sale.number}: ${reason}`, sale.id);
+  });
+}
 
-      const entries = await db.finance.where("saleId").equals(sale.id).toArray();
-      for (const entry of entries) {
-        if (entry.status === "OPEN" || entry.status === "PARTIAL") {
-          await db.finance.update(entry.id, { status: "CANCELLED" });
-        }
-      }
+/**
+ * ALTERA uma venda já registrada.
+ *
+ * Em vez de reescrever o registro — o que apagaria o rastro de estoque e de
+ * financeiro —, a versão anterior é estornada e marcada como cancelada, e
+ * nasce uma nova versão com o MESMO número. O histórico mostra as duas, e os
+ * relatórios de auditoria conseguem explicar a diferença.
+ */
+export async function updateSale(
+  saleId: string,
+  input: {
+    customerId?: string | null;
+    channel?: SaleChannel;
+    items: SaleLineInput[];
+    paymentMethod: PaymentMethod;
+    freight?: string | number;
+    extraDiscount?: string | number;
+    notes?: string;
+  },
+  reason: string,
+): Promise<Sale> {
+  if (!reason.trim()) throw new BusinessError("Explique o motivo da alteração.");
 
-      await db.sales.update(sale.id, {
-        status: "CANCELLED",
-        cancelledAt: nowIso(),
-        cancelReason: reason,
-      });
-      await registerLog("CANCEL", "Venda", `Cancelou a venda ${sale.number}: ${reason}`, sale.id);
-    },
-  );
+  return db.transaction("rw", SALE_TABLES(), async () => {
+    const original = await db.sales.get(saleId);
+    if (!original) throw new BusinessError("Venda não encontrada.");
+    if (original.status === "CANCELLED") {
+      throw new BusinessError("Esta venda está cancelada e não pode ser alterada.");
+    }
+    if (original.replacedBySaleId) {
+      throw new BusinessError("Esta versão já foi substituída por outra. Abra a versão mais recente.");
+    }
+
+    await reverseSale(original, `Alteração da venda ${original.number}`);
+    await db.sales.update(original.id, {
+      status: "CANCELLED",
+      cancelledAt: nowIso(),
+      cancelReason: `Alterada: ${reason}`,
+    });
+
+    const replacement = await createSale({
+      ...input,
+      keepNumber: original.number,
+      revision: (original.revision ?? 1) + 1,
+      replacesSaleId: original.id,
+    });
+
+    await db.sales.update(original.id, { replacedBySaleId: replacement.id });
+    await registerLog(
+      "UPDATE", "Venda",
+      `Alterou a venda ${original.number} (versão ${replacement.revision}): ${reason}`,
+      replacement.id,
+    );
+    return replacement;
+  });
 }

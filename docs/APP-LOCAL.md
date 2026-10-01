@@ -55,6 +55,16 @@ atualizar: **faça o backup, desinstale, instale o novo APK e restaure**. Com a
 chave própria configurada, a atualização passa a funcionar por cima, sem
 desinstalar e sem perder nada.
 
+### Antes de usar: três ajustes de 2 minutos
+
+Em **Mais → Configurações**:
+
+1. **Dados da loja** — nome, endereço e WhatsApp. É o que sai no comprovante
+   e no catálogo.
+2. **Recebimento por Pix** — ligue a opção e preencha chave, beneficiário e
+   cidade. Use o botão de teste para conferir antes da primeira venda.
+3. **Preços e comissão de cada produto** — em Mais → Produtos.
+
 Ao abrir pela primeira vez, o app já vem com o catálogo de produtos e insumos
 da empresa e com as faixas de desconto do atacado. **Preços, custos e estoques
 nascem zerados** — nada é inventado; preencha com os números reais.
@@ -90,7 +100,12 @@ Por isso ela **não substitui** o backup manual.
 - **Salvar em uma pasta do celular** — você escolhe onde gravar.
 
 O arquivo tem **tudo**: produtos, estoque, lotes, movimentações, fichas
-técnicas, produções, clientes, vendas, títulos financeiros e configurações.
+técnicas, produções, clientes, vendas, títulos financeiros, inventários,
+extratos conferidos, os **documentos anexados** e as configurações.
+
+> Os anexos (fotos de produto, autorizações, notas) viajam dentro do backup.
+> Por isso cada arquivo anexado é limitado a 2 MB e as fotos são reduzidas
+> automaticamente antes de serem guardadas.
 
 O app mostra um aviso no topo quando o backup está atrasado. O prazo é
 ajustável na própria tela de Backup (1, 3, 7, 15 ou 30 dias). O padrão é 7.
@@ -116,22 +131,84 @@ crítico, produção do dia, alertas e atalhos grandes.
 
 **Vendas** — busca o produto, um toque adiciona, `+`/`−` ajusta. O desconto de
 atacado entra sozinho, o estoque baixa pelo lote que vence antes e o título
-financeiro é criado. Aceita Pix, dinheiro, cartão, transferência e a prazo
-(com limite de crédito por cliente).
+financeiro é criado. Aceita Pix, dinheiro, cartão e transferência — **a venda
+a prazo foi removida**, todo recebimento acontece no ato.
+
+- **Comprovante em PDF pelo WhatsApp**, já com o **Pix copia e cola** da venda:
+  o cliente cola no banco e o valor vem preenchido. A mensagem que acompanha o
+  PDF também traz o código, que no WhatsApp é fácil de copiar.
+- **Alterar venda** — estorna a versão anterior (devolve o estoque, cancela os
+  títulos) e emite uma nova com o mesmo número e versão `v2`. As duas ficam no
+  histórico: é o que permite explicar a diferença numa auditoria.
+- **Cadastro de cliente na própria tela de venda**, sem perder o que já foi
+  digitado.
+- **Rascunho automático** — se o aplicativo fechar no meio da venda, ela volta
+  do jeito que estava.
+- A tela de vendas **não mostra lucro nem custo**. Esses números ficam em
+  Relatórios, onde é você quem olha.
 
 **Produção** — escolhe o produto e a quantidade; o app explode a ficha técnica,
 mostra a matéria-prima necessária e avisa o que falta. Ao finalizar, baixa os
 insumos, gera o lote `LB-AAAAMMDD-000` com validade, dá entrada no produto
 acabado e apura custo e rendimento reais.
 
-**Estoque** — entrada, saída, ajuste de inventário, lotes com validade e
-histórico de movimentações.
+**Estoque** — entrada, saída, lotes com validade e histórico de movimentações.
+
+- **Ajuste extraordinário** (Mais › Ajuste extraordinário): perda, devolução,
+  inventário e balanço. Cada um exige justificativa e aceita o **documento que
+  autoriza** o lançamento — foto ou PDF.
+- **Inventário** (Mais › Inventário): abre uma contagem que fotografa o saldo
+  do sistema, você anota o que contou item a item, e o fechamento acerta o
+  estoque e apura a divergência em quantidade e em dinheiro, com documento
+  anexado.
 
 **Fichas técnicas** — ingredientes, perdas, rendimento, mão de obra e energia,
 com o custo recalculado na hora conforme o custo médio das compras.
 
 **Clientes** — cadastro, histórico de compras, ticket médio, contas em aberto
 e atalho para o WhatsApp.
+
+**Produtos** — agora com **foto** (tirada na hora ou da galeria), **comissão
+por produto** e **faixas de desconto por quantidade** próprias ("a partir de
+5 kg, 5%"). Mudar o preço de venda pede o **motivo** e aceita o documento que
+autoriza; tudo fica no relatório de alterações de preço.
+
+**Catálogo** (Mais › Enviar catálogo) — monta a lista de produtos e preços,
+em varejo ou atacado, e manda pelo WhatsApp como PDF ou como mensagem.
+
+**Conferir extrato bancário** (Mais › Conferir extrato bancário) — você baixa
+o extrato pelo aplicativo do banco (CSV ou OFX) e escolhe o arquivo aqui.
+O aplicativo:
+
+1. casa cada crédito com a venda de mesmo valor, na janela de dias configurada;
+2. no extrato de maquininha, aceita o repasse já com a taxa descontada e
+   mostra quanto foi de taxa;
+3. para o que sobrar — outras receitas e despesas — sugere a classificação
+   pelo histórico ("ENEL" vira Energia) e deixa **pré-lançado para você
+   conferir e aprovar**;
+4. não deixa importar o mesmo extrato duas vezes.
+
+Nada é enviado pela internet: o arquivo é lido dentro do aparelho.
+
+**Relatórios** (Mais › Relatórios) — onze relatórios com filtro de período,
+todos exportáveis em PDF pelo WhatsApp:
+
+| Relatório | Para que serve |
+|---|---|
+| Vendas do período | Toda venda emitida, com as canceladas e as alteradas |
+| Resultado do período | Faturamento, custo da mercadoria, despesas e lucro |
+| Comissões por produto | Quanto cada produto gerou de comissão |
+| Margem por produto | O que vendeu, custou e deixou |
+| Movimentações de estoque | Entradas e saídas com o saldo após cada uma |
+| Ajustes extraordinários | Perdas e acertos, e **quais têm documento** |
+| Alterações de preço | De quanto para quanto, por quê e com qual autorização |
+| Inventários | Contagens e a divergência apurada |
+| Conciliação bancária | O que já foi conferido e as vendas sem crédito |
+| Posição de estoque | Saldo e valor de cada item agora |
+| Trilha de auditoria | Tudo o que foi feito no aplicativo, em ordem |
+
+**Financeiro** — lançamento de despesa, receita e **transferência entre contas
+próprias**, todos com **documento anexado** (nota fiscal, recibo, comprovante).
 
 **Financeiro** — contas a pagar e a receber com baixa parcial e resumo do mês.
 
@@ -144,17 +221,35 @@ abaixo do mínimo, clientes que sumiram, estoque parado e queda de rendimento.
 
 ### O que ficou para depois
 
-Compras com pedido ao fornecedor, pedidos em quadro kanban, os 15 relatórios
-com filtro de período, e usuários com perfis de acesso. Como é um celular só,
-usuários e permissões perdem o sentido; o resto entra numa próxima etapa se
-você quiser.
+Compras com pedido ao fornecedor e pedidos em quadro kanban. Usuários com
+perfis de acesso não entram: como é um celular só, perfis e permissões perdem
+o sentido.
+
+Duas limitações que vale conhecer:
+
+- **Contas não têm saldo próprio.** Caixa, conta bancária e maquininha existem
+  para classificar lançamentos, transferências e extratos — mas o aplicativo
+  não mantém um saldo por conta.
+- **Venda no cartão entra como recebida na hora.** O repasse real chega dias
+  depois; é a conferência do extrato que mostra quando o dinheiro entrou e
+  quanto ficou de taxa.
 
 ---
 
 ## Perguntas que costumam aparecer
 
 **Preciso de internet?** Não. O aplicativo funciona no modo avião. Internet só
-é necessária para enviar o backup ao Google Drive.
+é necessária para enviar o backup ao Google Drive, mandar o comprovante pelo
+WhatsApp e baixar o extrato do banco.
+
+**O Pix do comprovante cobra de verdade?** Sim. O código é gerado no padrão do
+Banco Central, com a sua chave e o valor da venda. Antes da primeira venda,
+use o botão de teste em Configurações: ele monta um Pix de R$ 1,00 para você
+colar no banco e conferir se o nome aparece certo. **Não pague o teste.**
+
+**Preciso anexar documento em todo ajuste?** Não é obrigatório, mas o relatório
+de ajustes extraordinários mostra em vermelho quais lançamentos ficaram sem
+documento — é exatamente isso que uma auditoria procura.
 
 **Dá para usar em dois celulares?** Nesta versão, não da forma que você
 esperaria: cada celular teria seus próprios dados, sem conversa entre eles.

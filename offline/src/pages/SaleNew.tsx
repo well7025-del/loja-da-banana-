@@ -1,25 +1,35 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/data/db";
-import type { PaymentMethod, Product, SaleChannel } from "@/data/types";
+import { db, newId, nowIso, registerLog } from "@/data/db";
+import type { Customer, CustomerType, PaymentMethod, Product, SaleChannel } from "@/data/types";
 import { D } from "@/lib/money";
 import { brl, num } from "@/lib/format";
-import { PAYMENT_METHOD_LABELS } from "@/lib/defaults";
-import { createSale, quoteSale, type Quote } from "@/logic/sales";
-import { Busy, Card, Field, Message, PageHeader } from "@/components/ui";
+import { CUSTOMER_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/defaults";
+import { createSale, quoteSale, updateSale, type Quote } from "@/logic/sales";
+import { Busy, Card, Field, Message, PageHeader, Sheet } from "@/components/ui";
 
 type Line = { productId: string; quantity: string; unitPrice: string; discountPct: string };
 
-const METHODS: PaymentMethod[] = ["PIX", "CASH", "CARD", "TRANSFER", "TERM"];
+/** A venda a prazo saiu: todo recebimento acontece no ato. */
+const METHODS: PaymentMethod[] = ["PIX", "CASH", "CARD", "TRANSFER"];
 
-export default function SaleNewPage() {
+const DRAFT_KEY = "lojaDaBanana.rascunhoVenda";
+
+type Draft = {
+  channel: SaleChannel; customerId: string; method: PaymentMethod;
+  freight: string; extraDiscount: string; notes: string; lines: Line[];
+  savedAt: string;
+};
+
+export default function SaleNewPage({ mode = "nova" }: { mode?: "nova" | "alterar" }) {
   const navigate = useNavigate();
+  const { id } = useParams();
+  const editing = mode === "alterar";
+
   const [channel, setChannel] = useState<SaleChannel>("RETAIL");
   const [customerId, setCustomerId] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("PIX");
-  const [installments, setInstallments] = useState("1");
-  const [dueDate, setDueDate] = useState(new Date().toISOString().slice(0, 10));
   const [freight, setFreight] = useState("");
   const [extraDiscount, setExtraDiscount] = useState("");
   const [notes, setNotes] = useState("");
@@ -28,6 +38,11 @@ export default function SaleNewPage() {
   const [quote, setQuote] = useState<Quote | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [reason, setReason] = useState("");
+  const [loaded, setLoaded] = useState(!editing);
+  const [draftFound, setDraftFound] = useState(false);
+  const [novoCliente, setNovoCliente] = useState(false);
 
   const catalog = useLiveQuery(
     async () => (await db.products.toArray())
@@ -41,6 +56,74 @@ export default function SaleNewPage() {
       .sort((a, b) => a.name.localeCompare(b.name)),
     [],
   );
+
+  // --- Alteração: carrega a venda que será substituída -------------------
+  useEffect(() => {
+    if (!editing || !id) return;
+    db.sales.get(id).then((sale) => {
+      if (!sale) { setError("Venda não encontrada."); setLoaded(true); return; }
+      if (sale.status === "CANCELLED") {
+        setError("Esta venda está cancelada e não pode ser alterada.");
+        setLoaded(true);
+        return;
+      }
+      setChannel(sale.channel);
+      setCustomerId(sale.customerId ?? "");
+      setMethod(METHODS.includes(sale.paymentMethod) ? sale.paymentMethod : "PIX");
+      setFreight(D(sale.freight).greaterThan(0) ? D(sale.freight).toFixed(2) : "");
+      setNotes(sale.notes ?? "");
+      setLines(sale.items.map((item) => ({
+        productId: item.productId,
+        quantity: D(item.quantity).toString(),
+        unitPrice: D(item.unitPrice).toFixed(2),
+        discountPct: D(item.discountPct).greaterThan(0) ? D(item.discountPct).toString() : "",
+      })));
+      setLoaded(true);
+    });
+  }, [editing, id]);
+
+  // --- Rascunho: a venda em andamento sobrevive a fechar o aplicativo ----
+  useEffect(() => {
+    if (editing) return;
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const draft = JSON.parse(raw) as Draft;
+      if (!draft.lines?.length) return;
+      setChannel(draft.channel ?? "RETAIL");
+      setCustomerId(draft.customerId ?? "");
+      setMethod(draft.method ?? "PIX");
+      setFreight(draft.freight ?? "");
+      setExtraDiscount(draft.extraDiscount ?? "");
+      setNotes(draft.notes ?? "");
+      setLines(draft.lines);
+      setDraftFound(true);
+    } catch {
+      // Rascunho ilegível: segue com a tela vazia.
+    }
+  }, [editing]);
+
+  useEffect(() => {
+    if (editing || !loaded) return;
+    try {
+      if (!lines.length) localStorage.removeItem(DRAFT_KEY);
+      else {
+        const draft: Draft = {
+          channel, customerId, method, freight, extraDiscount, notes, lines,
+          savedAt: nowIso(),
+        };
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      }
+    } catch {
+      // Sem espaço ou modo restrito: o rascunho é um conforto, não um requisito.
+    }
+  }, [editing, loaded, channel, customerId, method, freight, extraDiscount, notes, lines]);
+
+  const descartarRascunho = () => {
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* nada a fazer */ }
+    setLines([]); setCustomerId(""); setFreight(""); setExtraDiscount(""); setNotes("");
+    setDraftFound(false);
+  };
 
   const byId = useMemo(() => new Map((catalog ?? []).map((p) => [p.id, p])), [catalog]);
 
@@ -92,17 +175,20 @@ export default function SaleNewPage() {
     setError(null);
     const valid = lines.filter((l) => D(l.quantity).greaterThan(0));
     if (!valid.length) { setError("Adicione ao menos um produto à venda."); return; }
+    if (editing && !reason.trim()) { setError("Explique o motivo da alteração."); return; }
 
     setBusy(true);
     try {
-      const sale = await createSale({
+      const payload = {
         customerId: customerId || null, channel, items: valid,
-        paymentMethod: method,
-        installments: Number(installments || 1),
-        dueDate: method === "TERM" ? new Date(dueDate).toISOString() : null,
-        freight, extraDiscount, notes,
-      });
-      navigate(`/vendas/${sale.id}?nova=1`);
+        paymentMethod: method, freight, extraDiscount, notes,
+      };
+      const sale = editing
+        ? await updateSale(id!, payload, reason)
+        : await createSale(payload);
+
+      try { localStorage.removeItem(DRAFT_KEY); } catch { /* nada a fazer */ }
+      navigate(`/vendas/${sale.id}?nova=1`, { replace: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
@@ -114,12 +200,39 @@ export default function SaleNewPage() {
       ? D(product.wholesalePrice)
       : D(product.salePrice);
 
+  if (!loaded) return <p className="py-8 text-center text-sm text-ink-500">Carregando…</p>;
+
   return (
     <div>
-      <PageHeader title="Nova venda" subtitle="Descontos de atacado aplicados automaticamente" />
+      <PageHeader
+        title={editing ? "Alterar venda" : "Nova venda"}
+        subtitle={editing
+          ? "A versão anterior fica registrada como substituída"
+          : "Descontos de atacado aplicados automaticamente"}
+      />
 
       <div className="space-y-4">
         <Message error={error} />
+
+        {draftFound && (
+          <div className="flex items-center gap-3 rounded-xl bg-sky-50 px-3.5 py-3 text-sm ring-1 ring-sky-200">
+            <span className="flex-1 font-medium text-sky-900">
+              Recuperamos a venda que você tinha começado.
+            </span>
+            <button type="button" onClick={descartarRascunho}
+              className="shrink-0 font-bold text-sky-800 underline">Descartar</button>
+          </div>
+        )}
+
+        {editing && (
+          <Card className="space-y-2 bg-banana-50">
+            <Field label="Motivo da alteração" required
+              hint="Fica no histórico e no relatório de auditoria.">
+              <input className="input" value={reason} onChange={(e) => setReason(e.target.value)}
+                placeholder="Ex.: cliente trocou um item" />
+            </Field>
+          </Card>
+        )}
 
         <Card className="space-y-3">
           <div>
@@ -135,12 +248,17 @@ export default function SaleNewPage() {
               ))}
             </div>
           </div>
+
           <Field label="Cliente" hint={channel === "RETAIL" ? "Opcional no varejo" : undefined}>
             <select className="input" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
               <option value="">Consumidor no balcão</option>
               {(customers ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </Field>
+          <button type="button" onClick={() => setNovoCliente(true)}
+            className="btn-ghost w-full !justify-start !px-0 text-leaf-700">
+            + Cadastrar cliente novo
+          </button>
         </Card>
 
         <Card className="space-y-3">
@@ -151,11 +269,17 @@ export default function SaleNewPage() {
           <div className="grid grid-cols-2 gap-2">
             {matches.map((product) => (
               <button key={product.id} type="button" onClick={() => addProduct(product)}
-                className="rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-left transition hover:border-leaf-500 active:scale-[.98]">
-                <span className="block truncate text-sm font-semibold text-ink-900">{product.name}</span>
-                <span className="mt-0.5 block text-xs text-ink-500">
-                  {brl(priceOf(product))}/{product.unit.toLowerCase()} ·{" "}
-                  {num(D(product.quantity), 1)} em estoque
+                className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-left transition hover:border-leaf-500 active:scale-[.98]">
+                {product.imageUrl && (
+                  <img src={product.imageUrl} alt="" aria-hidden
+                    className="h-9 w-9 shrink-0 rounded-lg object-cover" />
+                )}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-ink-900">{product.name}</span>
+                  <span className="mt-0.5 block text-xs text-ink-500">
+                    {brl(priceOf(product))}/{product.unit.toLowerCase()} ·{" "}
+                    {num(D(product.quantity), 1)} em estoque
+                  </span>
                 </span>
               </button>
             ))}
@@ -241,24 +365,23 @@ export default function SaleNewPage() {
               <div className="flex justify-between text-leaf-700"><span>Descontos</span>
                 <span className="font-semibold tabular-nums">−{brl(quote.discount)}</span></div>
             )}
+            {quote.freight.greaterThan(0) && (
+              <div className="flex justify-between"><span className="text-ink-600">Frete</span>
+                <span className="font-semibold tabular-nums">{brl(quote.freight)}</span></div>
+            )}
             <div className="flex justify-between border-t border-[var(--border)] pt-1.5 text-base">
               <span className="font-bold">Total</span>
               <span className="font-bold tabular-nums">{brl(quote.total)}</span></div>
-            <div className="flex justify-between text-xs text-ink-500">
-              <span>Lucro bruto estimado</span>
-              <span className="tabular-nums">
-                {brl(quote.grossProfit)} ({num(quote.marginPct, 1)}%)
-              </span></div>
           </Card>
         )}
 
         <Card className="space-y-3">
           <div>
             <span className="label">Forma de pagamento</span>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {METHODS.map((value) => (
                 <button key={value} type="button" onClick={() => setMethod(value)}
-                  className={`rounded-xl px-2 py-3 text-sm font-bold transition ${
+                  className={`rounded-xl px-1 py-3 text-sm font-bold transition ${
                     method === value ? "bg-banana-400 text-[#3A2C00]" : "border border-[var(--border)] bg-white text-ink-600"
                   }`}>
                   {PAYMENT_METHOD_LABELS[value]}
@@ -266,26 +389,6 @@ export default function SaleNewPage() {
               ))}
             </div>
           </div>
-
-          {method === "TERM" && (
-            <>
-              {!customerId && (
-                <p className="rounded-xl bg-red-50 px-3.5 py-3 text-sm font-semibold text-red-700">
-                  Venda a prazo exige um cliente cadastrado.
-                </p>
-              )}
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="1º vencimento" required>
-                  <input type="date" className="input" value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)} />
-                </Field>
-                <Field label="Parcelas">
-                  <input className="input" inputMode="numeric" value={installments}
-                    onChange={(e) => setInstallments(e.target.value)} />
-                </Field>
-              </div>
-            </>
-          )}
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="Frete">
@@ -304,10 +407,97 @@ export default function SaleNewPage() {
         </Card>
 
         <Busy busy={busy} onClick={() => void submit()} disabled={quote === null}>
-          Finalizar venda {quote ? `— ${brl(quote.total)}` : ""}
+          {editing ? "Salvar alteração" : "Finalizar venda"} {quote ? `— ${brl(quote.total)}` : ""}
         </Busy>
       </div>
+
+      <NovoClienteSheet
+        open={novoCliente}
+        onClose={() => setNovoCliente(false)}
+        onCreated={(customer) => { setCustomerId(customer.id); setNovoCliente(false); }}
+      />
     </div>
   );
 }
 
+/** Cadastro rápido no meio da venda: só o essencial, o resto se completa depois. */
+function NovoClienteSheet({ open, onClose, onCreated }: {
+  open: boolean; onClose: () => void; onCreated: (customer: Customer) => void;
+}) {
+  const [name, setName] = useState("");
+  const [type, setType] = useState<CustomerType>("CONSUMER");
+  const [whatsapp, setWhatsapp] = useState("");
+  const [city, setCity] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) { setName(""); setWhatsapp(""); setCity(""); setType("CONSUMER"); setError(null); }
+  }, [open]);
+
+  async function salvar() {
+    setError(null);
+    if (!name.trim()) { setError("Informe o nome do cliente."); return; }
+
+    setBusy(true);
+    try {
+      const customer: Customer = {
+        id: newId(),
+        name: name.trim(),
+        type,
+        taxId: null,
+        phone: whatsapp.trim() || null,
+        whatsapp: whatsapp.trim() || null,
+        city: city.trim() || null,
+        address: null,
+        creditLimit: "0",
+        defaultDiscountPct: "0",
+        paymentTerms: null,
+        notes: null,
+        active: true,
+        deletedAt: null,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      };
+      await db.customers.add(customer);
+      await registerLog("CREATE", "Cliente", `Cadastrou ${customer.name} durante uma venda`, customer.id);
+      onCreated(customer);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Sheet open={open} title="Cliente novo" onClose={onClose}>
+      <div className="space-y-3">
+        <Message error={error} />
+        <Field label="Nome" required>
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)}
+            placeholder="Nome ou razão social" />
+        </Field>
+        <Field label="Tipo">
+          <select className="input" value={type} onChange={(e) => setType(e.target.value as CustomerType)}>
+            {Object.entries(CUSTOMER_TYPE_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="WhatsApp" hint="Para mandar o comprovante">
+            <input className="input" inputMode="tel" value={whatsapp}
+              onChange={(e) => setWhatsapp(e.target.value)} placeholder="(00) 90000-0000" />
+          </Field>
+          <Field label="Cidade">
+            <input className="input" value={city} onChange={(e) => setCity(e.target.value)} />
+          </Field>
+        </div>
+        <Busy busy={busy} onClick={() => void salvar()}>Cadastrar e usar na venda</Busy>
+        <p className="hint">
+          O cadastro completo (limite, desconto padrão, endereço) fica em Mais › Clientes.
+        </p>
+      </div>
+    </Sheet>
+  );
+}

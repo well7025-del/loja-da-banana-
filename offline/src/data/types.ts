@@ -13,11 +13,12 @@ export type Unit = "KG" | "G" | "L" | "ML" | "UN" | "CX" | "PCT" | "FD";
 export type MovementType = "IN" | "OUT" | "ADJUST";
 export type MovementReason =
   | "PURCHASE" | "PRODUCTION_IN" | "PRODUCTION_OUT" | "SALE" | "LOSS"
-  | "ADJUSTMENT" | "RETURN_IN" | "OPENING";
+  | "ADJUSTMENT" | "RETURN_IN" | "OPENING" | "INVENTORY" | "RETURN_OUT";
 export type BatchOrigin = "PRODUCTION" | "PURCHASE" | "ADJUSTMENT";
 export type ProductionStatus = "PLANNED" | "IN_PROGRESS" | "FINISHED" | "CANCELLED";
 export type SaleChannel = "RETAIL" | "WHOLESALE";
 export type SaleStatus = "COMPLETED" | "CANCELLED";
+/** TERM permanece só para ler vendas antigas: a venda a prazo saiu do app. */
 export type PaymentMethod = "PIX" | "CASH" | "CARD" | "TRANSFER" | "TERM";
 export type CustomerType =
   | "CONSUMER" | "STORE" | "MARKET" | "RESTAURANT" | "DISTRIBUTOR" | "REPRESENTATIVE" | "OTHER";
@@ -46,7 +47,12 @@ export type Product = {
   trackBatches: boolean;
   /** Saldo atual — o app offline trabalha com um único local de estoque. */
   quantity: Num;
+  /** Foto do produto, guardada como data URL já reduzida. */
   imageUrl?: string | null;
+  /** Comissão paga sobre a venda deste produto. */
+  commissionPct?: Num | null;
+  /** Faixas de desconto por quantidade específicas deste produto. */
+  qtyDiscounts?: QtyDiscount[];
   notes?: string | null;
   /** Dados de matéria-prima */
   supplierName?: string | null;
@@ -56,6 +62,9 @@ export type Product = {
   createdAt: string;
   updatedAt: string;
 };
+
+/** "A partir de X kg, Y% de desconto" — cadastrado no próprio produto. */
+export type QtyDiscount = { minQty: Num; discountPct: Num };
 
 export type Batch = {
   id: string;
@@ -86,6 +95,8 @@ export type Movement = {
   refType?: string | null;
   refId?: string | null;
   note?: string | null;
+  /** Documento que autoriza o lançamento (ajustes extraordinários). */
+  attachmentId?: string | null;
   createdAt: string;
 };
 
@@ -177,6 +188,9 @@ export type SaleItem = {
   total: Num;
   unitCost: Num;
   totalCost: Num;
+  /** Congelados na venda: mudar a comissão depois não reescreve o passado. */
+  commissionPct: Num;
+  commissionValue: Num;
 };
 
 export type Sale = {
@@ -200,6 +214,12 @@ export type Sale = {
   notes?: string | null;
   cancelledAt?: string | null;
   cancelReason?: string | null;
+  /** Alterar uma venda gera uma nova versão; a anterior fica cancelada. */
+  revision?: number;
+  replacesSaleId?: string | null;
+  replacedBySaleId?: string | null;
+  /** Conferida contra o extrato bancário. */
+  reconciledAt?: string | null;
 };
 
 export type Payment = {
@@ -227,6 +247,10 @@ export type FinanceEntry = {
   installments: number;
   payments: Payment[];
   notes?: string | null;
+  accountId?: string | null;
+  attachmentId?: string | null;
+  reconciledAt?: string | null;
+  statementLineId?: string | null;
   deletedAt?: string | null;
 };
 
@@ -253,5 +277,151 @@ export type LogEntry = {
   entity: string;
   entityId?: string | null;
   summary: string;
+  createdAt: string;
+};
+
+// ---------------------------------------------------------------------------
+// Documentos anexados
+// ---------------------------------------------------------------------------
+
+/**
+ * Arquivo guardado dentro do aparelho e incluído no backup.
+ *
+ * O conteúdo vai em base64 porque o backup é um JSON: um Blob não
+ * sobreviveria à exportação. Por isso o tamanho é limitado — ver
+ * `MAX_ATTACHMENT_BYTES`.
+ */
+export type Attachment = {
+  id: string;
+  /** "Movement", "Sale", "FinanceEntry", "PriceChange", "Inventory", "Transfer" */
+  entity: string;
+  entityId: string;
+  name: string;
+  mime: string;
+  size: number;
+  /** base64 puro, sem o prefixo "data:". */
+  data: string;
+  note?: string | null;
+  createdAt: string;
+};
+
+// ---------------------------------------------------------------------------
+// Auditoria de preço
+// ---------------------------------------------------------------------------
+
+export type PriceField = "salePrice" | "wholesalePrice";
+
+export type PriceChange = {
+  id: string;
+  productId: string;
+  field: PriceField;
+  oldValue: Num;
+  newValue: Num;
+  reason: string;
+  attachmentId?: string | null;
+  createdAt: string;
+};
+
+// ---------------------------------------------------------------------------
+// Inventário
+// ---------------------------------------------------------------------------
+
+export type InventoryStatus = "OPEN" | "CLOSED" | "CANCELLED";
+
+export type InventoryItem = {
+  productId: string;
+  /** Saldo do sistema no momento da abertura — a base da conferência. */
+  systemQty: Num;
+  countedQty?: Num | null;
+  unitCost: Num;
+  countedAt?: string | null;
+};
+
+export type Inventory = {
+  id: string;
+  code: string;
+  status: InventoryStatus;
+  scope: string;
+  items: InventoryItem[];
+  note?: string | null;
+  attachmentId?: string | null;
+  startedAt: string;
+  finishedAt?: string | null;
+  /** Divergência apurada no fechamento. */
+  diffValue?: Num | null;
+};
+
+// ---------------------------------------------------------------------------
+// Contas, transferências e extratos
+// ---------------------------------------------------------------------------
+
+export type AccountKind = "CASH" | "BANK" | "CARD";
+
+export type Account = {
+  id: string;
+  name: string;
+  kind: AccountKind;
+  active: boolean;
+  createdAt: string;
+};
+
+export type Transfer = {
+  id: string;
+  fromAccountId: string;
+  toAccountId: string;
+  amount: Num;
+  description: string;
+  happenedAt: string;
+  attachmentId?: string | null;
+  createdAt: string;
+  deletedAt?: string | null;
+};
+
+export type StatementKind = "BANK" | "CARD";
+
+export type Statement = {
+  id: string;
+  accountId: string;
+  kind: StatementKind;
+  fileName: string;
+  importedAt: string;
+  from: string;
+  to: string;
+  lineCount: number;
+};
+
+export type StatementLineStatus =
+  /** Ainda não conferida. */
+  | "PENDING"
+  /** Casada com venda(s) ou título(s) já existentes. */
+  | "MATCHED"
+  /** Virou lançamento no financeiro. */
+  | "POSTED"
+  /** Marcada como "não interessa" (transferência própria, estorno…). */
+  | "IGNORED";
+
+export type StatementSuggestion = {
+  direction: FinanceDirection;
+  category: string;
+  description: string;
+};
+
+export type StatementLine = {
+  id: string;
+  statementId: string;
+  /** Data do lançamento no extrato (ISO). */
+  date: string;
+  description: string;
+  /** Positivo = crédito, negativo = débito. */
+  amount: Num;
+  /** Evita importar a mesma linha duas vezes. */
+  fingerprint: string;
+  status: StatementLineStatus;
+  matchedSaleIds: string[];
+  matchedFinanceIds: string[];
+  /** Diferença entre o valor da venda e o creditado (taxa de cartão). */
+  feeAmount?: Num | null;
+  suggestion?: StatementSuggestion | null;
+  note?: string | null;
   createdAt: string;
 };

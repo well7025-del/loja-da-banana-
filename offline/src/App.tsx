@@ -25,6 +25,14 @@ import FinanceListPage from "./pages/FinanceList";
 import FinanceNewPage from "./pages/FinanceNew";
 import DecisionsPage from "./pages/Decisions";
 import PricingPage from "./pages/Pricing";
+import StockAdjustPage from "./pages/StockAdjust";
+import InventoriesPage from "./pages/Inventories";
+import InventoryDetailPage from "./pages/InventoryDetail";
+import ReconcilePage from "./pages/Reconcile";
+import ReconcileDetailPage from "./pages/ReconcileDetail";
+import ReportsPage from "./pages/Reports";
+import ReportDetailPage from "./pages/ReportDetail";
+import CatalogPage from "./pages/Catalog";
 import BackupPage from "./pages/Backup";
 import SettingsPage from "./pages/Settings";
 import MorePage from "./pages/More";
@@ -83,6 +91,9 @@ export function App() {
           <Route path="/estoque/entrada" element={<StockMovePage mode="entrada" />} />
           <Route path="/estoque/saida" element={<StockMovePage mode="saida" />} />
           <Route path="/estoque/ajuste" element={<StockMovePage mode="ajuste" />} />
+          <Route path="/estoque/ajustes" element={<StockAdjustPage />} />
+          <Route path="/inventario" element={<InventoriesPage />} />
+          <Route path="/inventario/:id" element={<InventoryDetailPage />} />
           <Route path="/estoque/lotes" element={<BatchesPage />} />
           <Route path="/estoque/movimentos" element={<MovementsPage />} />
           <Route path="/fichas-tecnicas" element={<RecipesPage />} />
@@ -94,6 +105,8 @@ export function App() {
           <Route path="/vendas" element={<SalesPage />} />
           <Route path="/vendas/nova" element={<SaleNewPage />} />
           <Route path="/vendas/:id" element={<SaleDetailPage />} />
+          <Route path="/vendas/:id/alterar" element={<SaleNewPage mode="alterar" />} />
+          <Route path="/catalogo" element={<CatalogPage />} />
           <Route path="/clientes" element={<CustomersPage />} />
           <Route path="/clientes/novo" element={<CustomerEditPage />} />
           <Route path="/clientes/:id" element={<CustomerEditPage />} />
@@ -101,6 +114,10 @@ export function App() {
           <Route path="/financeiro/pagar" element={<FinanceListPage direction="PAYABLE" />} />
           <Route path="/financeiro/receber" element={<FinanceListPage direction="RECEIVABLE" />} />
           <Route path="/financeiro/novo" element={<FinanceNewPage />} />
+          <Route path="/conciliacao" element={<ReconcilePage />} />
+          <Route path="/conciliacao/:id" element={<ReconcileDetailPage />} />
+          <Route path="/relatorios" element={<ReportsPage />} />
+          <Route path="/relatorios/:id" element={<ReportDetailPage />} />
           <Route path="/central-decisoes" element={<DecisionsPage />} />
           <Route path="/precificacao" element={<PricingPage />} />
           <Route path="/backup" element={<BackupPage />} />
